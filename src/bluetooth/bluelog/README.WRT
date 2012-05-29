@@ -1,0 +1,155 @@
+--------------------------------------------------------------------------------
+- NOTICE: OUTDATED                                                             -
+--------------------------------------------------------------------------------
+
+As of 1.0.2, the process to build Bluelog for OpenWRT was streamlined so that
+it could be added to the official package repository. Because of this the
+information below on manually building an OpenWRT package is outdated.
+
+It is presented here for historical purposes, and as a guide for anyone who
+still wants (for whatever reason) to build Bluelog on OpenWRT the hard way.
+
+================================================================================
+=                           Bluelog On OpenWRT                                 =
+================================================================================
+
+OpenWRT is an excellent Linux OS that runs on many different routers and
+embedded devices. Rather than being a simple firmware replacement, OpenWRT aims
+to be as close to a standard Linux install as possible given the meager
+hardware it usually runs on. 
+
+Bluelog is a fairly lightweight application and has been written with
+portability in mind, so it's well suited to running on the embedded devices
+that OpenWRT supports. Unfortunately, due to limitations in the HTTP servers
+currently available for OpenWRT, Bluelog Live mode is not yet supported. This
+likely won't change until the Live interface is rewritten in a more flexible
+language.
+
+Bluelog has been tested and is known to work on the TP-Link TL-MR3220, Buffalo
+WZR-HP-G300NH, and the Ubiquiti RouterStation Pro; though any
+OpenWRT-compatible device with at least one free USB port should work fine.
+
+--------------------------------------------------------------------------------
+- Setting up the OpenWRT Build Environment                                     -
+--------------------------------------------------------------------------------
+
+Due to the hardware limitations of the embedded devices OpenWRT generally runs
+on, it isn't possible to simply compile packages directly on the target device.
+If you want to run Bluelog on your OpenWRT device, you will need to setup the
+build environment, install the required dependencies into it, and create an
+OpenWRT package tailored to your hardware type.
+
+The following will walk you through the process I personally used to build
+Bluelog on OpenWRT at the time of this writing. I can't guarantee the accuracy
+of this information or if it will still be valid in the future. If you have
+issues with the OpenWRT build, contact me and I can TRY to help.
+
+To start with, you will want to get the current version of OpenWRT (Backfire)
+from the OpenWRT SVN. Create a new directory to work from and run the
+following command to start the download:
+
+$ svn co svn://svn.openwrt.org/openwrt/branches/backfire
+
+Once downloaded, we will then move into the newly created "backfire"
+directory, and install BlueZ into the development environment:
+
+$ cd backfire
+$ scripts/feeds update
+$ scripts/feeds install bluez-libs bluez-utils
+
+At this point, everything is installed and we are ready to start the compile
+process. You will next run "make menuconfig", and navigate through the menus
+to select (at minimum) the following options:
+
+"Target System"
+    The core architecture for your device, check OpenWRT Wiki if you don't
+know what it is.
+
+"Target Profile"
+    Specific router make/model. Not all models have specific build profiles,
+but if yours does, it will be listed here. Otherwise, the default generic
+profile will probably work.
+
+"Libraries"
+    Make sure BlueZ is enabled.
+
+You can now exit out of the menus, and begin the build process by simply
+running the command "make". This part can take quite some time, depending on
+your hardware.
+
+--------------------------------------------------------------------------------
+- Compiling Bluelog for OpenWRT                                                -
+--------------------------------------------------------------------------------
+
+With the OpenWRT build environment compiled, you are now ready to actually
+create the Bluelog package.
+
+For simplicities sake, I will assume that you have the OpenWRT source tree
+and Bluelog's source located at /usr/src. So for the rest of this document,
+the default locations will be "/usr/src/backfire" and "/usr/src/bluelog"
+
+Create a "bluelog" directory under "package" (located in the root of the
+backfire directory), and move the appropriate build files into it. That would
+look something like this:
+
+$ mkdir /usr/src/backfire/package/bluelog
+$ cp -a /usr/src/bluelog/openwrt/* /usr/src/backfire/package/bluelog/
+$ cp /usr/src/bluelog/*.c /usr/src/backfire/package/bluelog/src/
+
+You should then have a layout like the following:
+
+/usr/src/backfire/package/bluelog/
+    Makefile
+    README
+    src/
+       Makefile
+       bluelog.c
+       config.h
+       classes.c
+
+Once the appropriate files have been copied to the OpenWRT build environment,
+you need to re-run "make menuconfig" from the "backfire" directory. You should
+see a new section on the main menu that says "Bluetooth", go into it and select
+Bluelog for inclusion by pressing the "Space" key on the line for Bluelog. You
+can then Exit out of menuconfig (confirming you want to save the new
+configuration) and compile the Bluelog package with the following line:
+
+$ make package/bluelog/compile V=99
+
+Assuming there are no errors, this leave you with an OpenWRT package of Bluelog
+at:
+
+/usr/src/backfire/bin/ARCH/packages/bluelog_x.x.x-1_ARCH.ipk
+
+If you have the package, send it over to the OpenWRT device, install it with
+opkg, and hope for the best.
+
+--------------------------------------------------------------------------------
+- Starting up Bluelog                                                          -
+--------------------------------------------------------------------------------
+
+To get Bluetooth working on OpenWRT, you need to install a few packages and
+enable BlueZ. On a fresh OpenWRT install, that should look something like
+this:
+
+root@OpenWrt:~# opkg install bluez-libs bluez-utils kmod-bluetooth
+root@OpenWrt:~# /etc/init.d/bluez-utils enable
+root@OpenWrt:~# /etc/init.d/bluez-utils start
+
+With your Bluetooth adapter plugged into the OpenWRT device, you should be
+able to run the following command to actually bring up the hardware:
+
+root@OpenWrt:~# hciconfig hci0 up
+
+Running hciconfig again should now show a Bluetooth device running on the USB
+bus, at which point you are ready to start up Bluelog as normal.
+
+--------------------------------------------------------------------------------
+- References                                                                   -
+--------------------------------------------------------------------------------
+
+Good information on building packages:
+https://forum.openwrt.org/viewtopic.php?pid=121258#p121258
+
+Installing BlueZ into build environment:
+https://forum.openwrt.org/viewtopic.php?pid=50814 

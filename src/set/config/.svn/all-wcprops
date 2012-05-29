@@ -1,0 +1,23 @@
+K 25
+svn:wc:ra_dav:version-url
+V 48
+/!svn/ver/1231/social_engineering_toolkit/config
+END
+set_config
+K 25
+svn:wc:ra_dav:version-url
+V 59
+/!svn/ver/1231/social_engineering_toolkit/config/set_config
+END
+slim_set.py
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/!svn/ver/1202/social_engineering_toolkit/config/slim_set.py
+END
+mailing_list.txt
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/!svn/ver/742/social_engineering_toolkit/config/mailing_list.txt
+END

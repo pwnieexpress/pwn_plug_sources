@@ -1,0 +1,244 @@
+Background
+==========
+
+- Priority scale: High, Medium and Low
+
+- Complexity scale: C1, C2, C4 and C8.  The complexity scale is exponential,
+  with complexity 1 being the lowest complexity.  Complexity is a function
+  of both task 'complexity' and task 'scope'.
+
+  The general rule of thumb is that a complexity 1 task should take 1-2 weeks
+  for a person very familiar with BlueZ codebase.  Higher complexity tasks
+  require more time and have higher uncertainty.
+
+  Higher complexity tasks should be refined into several lower complexity tasks
+  once the task is better understood.
+
+General
+==========
+
+- UUID handling: Use the new functions created for UUID handling in all parts
+  of BlueZ code.  Currently, the new bt_uuid_* functions are being used by
+  GATT-related code only.
+
+  Priority: high
+  Complexity: C4
+
+- Rename glib-helper file to a more convenient name. The ideia is try to keep
+  only sdp helpers functions. bt_* prefix shall be also changed.
+
+  Priority: Low
+  Complexity: C1
+
+Low Energy
+==========
+
+- Advertising management. Adapter interface needs to be changed to manage
+  connection modes, adapter type and advertising policy. See Volume 3,
+  Part C, section 9.3. If Attribute Server is enabled the LE capable
+  adapter shall to start advertising. Further investigation is necessary
+  to define which connectable mode needs to be supported: Non-connectable,
+  directed connectable and undirected connectable. Basically, two connectable
+  scenarios shall be addressed:
+  1. GATT client is disconnected, but intends to become a Peripheral to
+     receive indications/notifications.
+  2. GATT server intends to accept connections.
+
+  Priority: Medium
+  Complexity: C2
+
+- Define Auto Connection Establishment Procedure. Some profiles such as
+  Proximity requires an active link to identify path lost situation. It is
+  necessary to define how to manage connections, it seems that White List
+  is appropriated to address auto connections, however is not clear if the
+  this procedure shall be a profile specific detail or if the remote device
+  object can expose a property "WhiteList", maybe "Trusted" property can be
+  also used for this purpose. Another alternative is to define a method to
+  allow application to request/register the wanted scanning/connection
+  parameters. Before start this task, a RFC/PATCH shall be sent to the ML.
+  See Volume 3, Part C, section 9.3.5 for more information.
+
+  Priority: Medium
+  Complexity: C2
+
+- Implement a tool(or extend hciconfig) to setup the advertising parameters
+  and data. Extend hciconfig passing extra arguments when enabling the
+  advertises is not the right approach, it will be almost impossible to
+  address all arguments needed in an acceptable way. For testing, we need
+  a tool to change easily the AD Flags, the UUIDs and other data that can be
+  exported through the advertising data field. Suggestions: 1) extend hciconfig
+  passing a config file when enabling advertises; 2) write a ncurses based tool
+
+  Priority: Medium
+  Complexity: C2
+
+- Add new property in the DeviceFound signal to report the device type:
+  BR/EDR, single mode or dual-mode.
+
+  Priority: Medium
+  Complexity: C1
+
+- Privacy: When privacy is enabled in the adapter, LE scanning/connection
+  should use a private address. StartDiscovery method shall be changed and
+  new adapter property shall be added.
+
+  Priority: Medium
+  Complexity: C1
+
+- Static random address setup and storage. Once this address is written
+  in the a given remote, the address can not be changed anymore.
+
+  Priority: Low
+  Complexity: C1
+
+- Reconnection address: Reconnection address is a non resolvable private
+  address that the central writes in the peripheral. BlueZ will support
+  multiple profiles, it is not clear how it needs to be implemented.
+  Further discussion is necessary.
+
+  Priority: Low
+  Complexity: C2
+
+- Device Name Characteristic is a GAP characteristic for Low Energy. This
+  characteristic shall be integrated/used in the discovery procedure. The
+  ideia is to report the value of this characteristic using DeviceFound signals.
+  Discussion with the community is needed before to start this task. Other GAP
+  characteristics for LE needs to follow a similar approach. It is not clear
+  if all GAP characteristics can be exposed using properties instead of a primary
+  service characteristics.
+  See Volume 3, Part C, section 12.1 for more information.
+
+  Priority: Low
+  Complexity: C2
+
+ATT/GATT
+========
+
+- At the moment authentication and authorization is not supported at the
+  same time, read/write requirements in the attribute server needs to
+  be extended. According to Bluetooth Specification a server shall check
+  authentication and authorization requirements before any other check is
+  performed.
+
+  Priority: Medium
+  Complexity: C1
+
+- ATT/GATT parsing to hcidump. Partially implemented, missing to fix
+  multiple advertises in the same event and RSSI.
+
+  Priority: Medium
+  Complexity: C2
+
+- Implement ATT PDU validation. Malformed PDUs can cause division by zero
+  when decoding PDUs. A proper error PDU should be returned for this case.
+  See decoding function in att.c file.
+
+  Priority: Medium
+  Complexity: C1
+
+- Fix hard-coded PSM for GATT services over basic rate.
+
+  Priority: Low
+  Complexity: C1
+
+- Refactor read_by_group() and read_by_type() in src/attrib-server.c
+  (they've grown simply too big). First step could be to move out the
+  long for-loops to new functions called e.g. get_groups() and get_types().
+
+  Priority: Low
+  Complexity: C1
+
+- Agent for characteristics: Agent interface should be extended to support
+  authorization per characteristic if the remote is not in the trusted list.
+
+  Priority: Low
+  Complexity: C1
+
+- gatttool should have the ability to wait for req responses before
+  quitting (some servers require a small sleep even with cmd's). Maybe a
+  --delay-exit or --timeout command line switch.
+
+  Priority: Low
+  Complexity: C1
+
+- Refactoring of gatt.c functions. Currently, the callbacks of the services
+  and characteristics discovery functions return the ATT PDU and the caller
+  needs to call again the same function to fetch the remaining data when
+  necessary. Investigate if all results can be returned in the callback
+  result to avoid repeated code. Before change the code, please analyze
+  if this change will not break the GATT/ATT qualification tests. Maybe
+  an interactive fetch/query is necessary to pass the tests.
+
+  Priority: Low
+  Complexity: C1
+
+- Client needs to export a property in the Device Characteristic hierarchy
+  to manage characteristic value changes reports in the remote device.
+  Currently, Client Characteristic Configuration attribute is not exposed
+  as an object. The user needs to use gatttool to change the value of the
+  this attribute to receive notification/indications. Export this attribute
+  as a property is a proposal that needs further discussion.
+
+  Priority: Low
+  Complexity: C1
+
+- Attribute server should process queued GATT/ATT commands if the
+  client disconnects. The client can simply send a command and quit,
+  without wait for a response(ex: Write Command). For this scenario
+  that the client disconnects the link quickly the queued received
+  command is ignored.
+
+  Priority: Low
+  Complecity: C1
+
+- Add sdp discovery support to gattool with BR (--sdp, default is 0x1f)
+
+  Priority: Low
+  Complexity: C1
+
+- Implement Server characteristic Configuration support in the attribute
+  server to manage characteristic value broadcasting. There is a single
+  instance of the Server Characteristic Configuration for all clients.
+  See Volume 3, Part G, section 3.3.3.4 for more information.
+
+  Priority: Low
+  Complexity: C1
+
+- Long write is not implemented. Attribute server, client and command line
+  tool shall be changed to support this feature.
+
+  Priority: Low
+  Complexity: C2
+
+- Define attribute server API. External applications needs to register,
+  change attributes and to be notified about changes. Example: Proximity,
+  Time and Alert Profiles. "Local Service hierarchy" in the attribute-api
+  needs to be proposed and a RFC shall be sent to the ML.
+
+  Priority: Low
+  Complexity: C2
+  Owner: Anderson Lizardo <anderson.lizardo@openbossa.org>
+
+Management Interface
+====================
+
+- Device discovery support (both for BR/EDR & LE)
+
+  Priority: High
+  Complexity: C3
+
+- Blacklist support
+
+  Priority: Medium
+  Complexity: C1
+
+- mgmt_set_fast_connectable
+
+  Priority: Medium
+  Complexity: C1
+
+- Whitelist support (initially only for LE)
+
+  Priority: Medium
+  Complexity: C2
+  Owner: Andre Guedes <andre.guedes@openbossa.org>

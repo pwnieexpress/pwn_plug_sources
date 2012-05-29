@@ -1,0 +1,184 @@
+#!/usr/bin/python
+from src.core.setcore import *
+from src.core.menu import text
+import os
+import subprocess
+import sys
+import shutil
+import re
+
+#########################################
+# The Social-Engineer Toolkit (SET)     #
+# Written by: David Kennedy (ReL1K)     #
+# Email: davek@secmaniac.com            #
+#########################################
+#
+# this is the main menu structure for SET
+
+# main menu
+
+# grab the operating system
+operating_system = check_os()
+
+
+# chmod routine
+if operating_system == "posix":
+        subprocess.Popen("chmod +x set-automate;chmod +x set-update;chmod +x setup.py;chmod +x set-proxy;chmod +x src/payloads/ratte/ratteserver;chmod +x src/payloads/set_payloads/listener.py", stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+
+# remove old files
+for root, dirs, files in os.walk('src/program_junk/'):
+    for f in files:
+        try:
+                match = re.search(".svn|entries|all-wcprops|props|text-base|prop-base|tmp", f)
+                if not match:
+                        os.unlink(os.path.join(root, f))
+
+        # if they are being used then ignore
+        except: pass
+    # loop through all the directories
+    for d in dirs:
+        try:
+                match = re.search(".svn|entries|all-wcprops|props|text-base|prop-base|tmp", d)
+                if not match:
+                        shutil.rmtree(os.path.join(root, d))
+        except: pass
+
+# if windows then do some stuff
+if operating_system == "posix":
+
+        ################################################
+        # ROOT CHECK
+        ################################################
+
+        if os.geteuid() != 0:
+                print "\n The Social-Engineer Toolkit (SET) - by David Kennedy (ReL1K)"
+                print "\n Not running as root. \n\nExiting the Social-Engineer Toolkit (SET).\n"
+                ExitSet()
+
+if operating_system != "windows":
+	check_pexpect()
+
+check_beautifulsoup()
+define_version = GetVersion()
+cleanup_routine()
+
+# create the set.options routine
+filewrite = file("src/program_junk/set.options", "w")
+filewrite.write("{This is the main SET configuration file for all options used in SET}\n")
+filewrite.close()
+
+try:
+        # Remove old Signed_Updates
+        if os.path.isfile("src/program_junk/Signed_Update.jar"):
+                os.remove("src/program_junk/Signed_Update.jar")
+
+        # intitial user menu
+        if not os.path.isfile("src/agreement2"):
+                print """Copyright 2012, The Social-Engineer Toolkit (SET)
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer
+      in the documentation and/or other materials provided with the distribution.
+    * Neither the name of Social-Engineer Toolkit nor the names of its contributors may be used to endorse or promote products derived from
+      this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+The above licensing was taken from the BSD licensing and is applied to Social-Engineer Toolkit as well.
+
+Note that the Social-Engineer Toolkit is provided as is, and is a royalty free open-source application.
+
+Feel free to modify, use, change, market, do whatever you want with it as long as you give the appropriate credit where credit
+is due (which means giving the authors the credit they deserve for writing it). Also note that by using this software, if you ever
+see the creator of SET in a bar, you are required to give him a hug and buy him a beer. Hug must last at least 5 seconds. Author
+holds the right to refuse the hug or the beer.
+"""
+
+                print bcolors.RED + """
+The Social-Engineer Toolkit is designed purely for good and not evil. If you are planning on using this tool for malicious purposes that are 
+not authorized by the company you are performing assessments for, you are violating the terms of service and license of this toolset. By hitting 
+yes (only one time), you agree to the terms of service and that you will only use this tool for lawful purposes only.""" + bcolors.GREEN
+                choice = raw_input("\nDo you agree to the terms of service [y/n]: ")
+                if choice == "yes" or choice == "y":
+                        filewrite = file("src/agreement2", "w")
+                        filewrite.write("user accepted")
+                        filewrite.close()
+                        print bcolors.ENDC
+                else: 
+                        print "[!] Exiting the Social-Engineer Toolkit, have a nice day." + bcolors.ENDC
+                        sys.exit()
+                      
+        while 1:
+		show_banner(define_version,'1')
+		show_main_menu = CreateMenu(text.main_text, text.main_menu)
+
+		# special case of list item 99
+		print '\n  99) Exit the Social-Engineer Toolkit\n'
+
+		# mainc ore menu
+		main_menu_choice = (raw_input(setprompt("0", "")))
+
+                # funny
+                if main_menu_choice == "hugs":
+                        PrintWarning("Have you given someone a hug today? Remember a hug can change the world.")
+                        pause = raw_input("\nPlease give someone a hug then press {return} to continue.")
+
+		# quit out
+		if main_menu_choice == 'exit' or main_menu_choice == "99" or main_menu_choice == "quit":
+			ExitSet()
+                        # cleans up stale processes from SET
+                        try:
+                                # kill anything python running on 80
+                                kill_proc("80","python")
+                                # kill anything on 443 ruby which is generally a rogue listener
+                                kill_proc("443", "ruby")
+                        except: pass
+
+		# load set
+		if main_menu_choice == '1':
+			try:
+				reload(src.core.set)
+			except:
+				import src.core.set
+
+		# load fasttrack
+		if main_menu_choice == '2':
+			try: reload(src.core.fasttrack)
+			except: import src.core.fasttrack
+	
+		# third party modules
+		if main_menu_choice == '3':
+			try: reload(src.core.module_handler)
+			except: import src.core.module_handler
+
+		# update metasploit
+		if main_menu_choice == '4':
+			update_metasploit()
+
+		# update set
+		if main_menu_choice == '5':
+			update_set()
+
+		# credits
+		if main_menu_choice == '6':
+			help_menu()
+
+# handle keyboard interrupts
+except KeyboardInterrupt:
+        print "\n\n Thank you for " + bcolors.RED+"shopping" + bcolors.ENDC+" at the Social-Engineer Toolkit.\n\n Hack the Gibson...and remember...hugs are worth more than handshakes.\n"
+
+# handle exceptions
+except Exception, error:
+        log(error)
+        print "\n\n Something went wrong, printing the error: "+ str(error)
+
+# cleanup routine
+cleanup_routine()

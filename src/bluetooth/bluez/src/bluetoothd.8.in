@@ -1,0 +1,91 @@
+.\"
+.TH "BLUETOOTHD" "8" "March 2004" "Bluetooth daemon" "System management commands"
+.SH "NAME"
+bluetoothd \- Bluetooth daemon
+
+.SH "SYNOPSIS"
+.B bluetoothd
+[
+.B \-n
+]
+
+.SH "DESCRIPTION"
+This manual page documents briefly the
+.B bluetoothd
+daemon, which manages all the Bluetooth devices.
+.B bluetoothd
+itself does not accept many command\-line options, as most of its
+configuration is done in the
+.B @CONFIGDIR@/main.conf
+file, which has its own man page.
+.B bluetoothd
+can also provide a number of services via the D-Bus message bus
+system.
+.SH "OPTIONS"
+.TP
+.BI \-n
+Don't run as daemon in background.
+.TP
+.BI \-d
+Enable debug information output.
+.TP
+.BI \-m\ mtu\-size
+Use specific MTU size for SDP server.
+
+.SH "FILES"
+.TP
+.I @CONFIGDIR@/main.conf
+Default location of the global configuration file.
+
+.TP
+.I @STORAGEDIR@/nn:nn:nn:nn:nn:nn/linkkeys
+Default location for link keys of paired devices. The directory
+\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP
+is the address of the local device. The file is line separated, with
+the following columns separated by whitespace:
+
+\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP Remote device address.
+
+\fInnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn\fP Link key.
+
+\fIn\fP Link type integer.
+
+.TP
+.I @STORAGEDIR@/nn:nn:nn:nn:nn:nn/names
+Default location for the device name cache. The directory
+\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP
+is the address of the local device. The file is line separated, with
+the following columns separated by whitespace:
+
+\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP Remote device address.
+
+\fIname\fP Remote device name, terminated with newline.
+
+.TP
+.I @STORAGEDIR@/nn:nn:nn:nn:nn:nn/features
+Default location for the features cache. The directory
+\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP
+is the address of the local device. The file is line separated, with
+the following columns separated by whitespace:
+
+\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP Remote device address.
+
+\fInnnnnnnnnnnnnnnn\fP Remote device LMP features coded as an 8 byte bitfield.
+
+.TP
+.I @STORAGEDIR@/nn:nn:nn:nn:nn:nn/manufacturers
+Default location for the manufacturers cache. The directory
+\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP
+is the address of the local device. The file is line separated, with
+the following columns separated by whitespace:
+
+\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP\fB:\fP\fInn\fP Remote device address.
+
+\fIn\fP Remote device manufacturer integer.
+
+\fIn\fP Remote device LMP version integer.
+
+\fIn\fP Remote device LMP sub-version integer.
+
+.SH "AUTHOR"
+This manual page was written by Marcel Holtmann, Philipp Matthias Hahn and Fredrik Noring.

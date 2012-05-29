@@ -1,0 +1,22 @@
+some remarks about security
+
+-sobexsrv will refuse to run as root
+-for chroot you need to suid-root sobexsrv, it will drop to the calling user
+ after doing chroot
+-directory traversal is possible when not running chroot
+-great care has to be taken when writing handler scripts, since all security
+ checks have to be performed by the script!
+
+
+how to get a secure setup?
+
+1) personal file access
+
+   only allow connections from authenticated devices (using authentication and
+   encryption), initial directory is your home directory
+ 
+   sobexsrv -s 2 -Ir $HOME
+
+2) public file distribution
+
+   sobexsrv -IRr $HOME/obexpublic

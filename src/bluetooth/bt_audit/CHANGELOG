@@ -1,0 +1,21 @@
+v0.1.1 (Feb. 05. 2006)
+ added ACL disconnect feature to rfcomm_scan (thanks for the patch Adam!)
+
+v0.1 (June 1. 2004)
+ initial release as bt_audit
+ psm_scan v0.4
+  code cleanup
+ rfcomm_scan v0.1
+  (initial release)
+ btdsd_sample.sh
+  scanning script for database
+
+v0.3 (Feb. 11. 2004)
+ using raw sockets to get more detailed information
+ now only odd PSM numbers are scanned (1,3,5,7,...)
+
+v0.2 (Nov. 28. 2003)
+ initial release
+
+v0.1
+ (non-public)

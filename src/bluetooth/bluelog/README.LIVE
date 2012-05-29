@@ -1,0 +1,138 @@
+================================================================================
+=                           Bluelog Live Notes                                 =
+================================================================================
+
+Bluelog Live is technically a separate piece of software from the main Bluelog
+tool. It is comprised of simple static HTML pages and some SSI hacks that let it
+load in the plain text log files from Bluelog. Bluelog is in fact completely
+unaware of the status of the Live pages while running, it just pumps out data
+and hopes for the best.
+
+--------------------------------------------------------------------------------
+- Installation                                                                 -
+--------------------------------------------------------------------------------
+
+The first thing I want to make clear is that Bluelog is NOT a web server, it
+simply generates the HTML files which you will then serve with your HTTP daemon
+of choice (Apache, lighttpd, etc). Therefore, before you try and start Bluelog
+Live, make sure your web server is already configured properly.
+
+Some adjustments might be required for your configuration, depending on how
+tight your server is locked down. You will need to configure the server to
+enable SSI and (optionally) set it to recognize index.shtml as a valid default
+page. It may be your server is already setup for this, as neither of the
+requirements are particularly outlandish.
+
+Under lighttpd, you will need to make sure the following options (or something
+very similar) are in your /etc/lighttpd/lighttpd.conf file:
+
+server.modules = ("mod_ssi")
+index-file.names = ( "index.html", "index.shtml" )
+ssi.extension = (".shtml")
+
+Restart lighttpd, and you should be good to go.
+
+Under Apache, the configuration is a little more involved. First, you have to
+edit your /etc/apache2/sites-available/default file to change the section for
+/var/www. The section should look something like the following when you are
+done:
+
+<Directory /var/www/>
+        Options Indexes FollowSymLinks MultiViews +Includes
+        AllowOverride None
+        Order allow,deny
+        allow from all
+        AddType text/html .shtml
+        AddOutputFilter INCLUDES .shtml
+        DirectoryIndex index.shtml
+</Directory>
+
+You then need to load the SSI module, which can be accomplished by running the
+command "a2enmod include". Then restart Apache with whatever method your
+distribution prefers.
+
+Once you have your server setup, you need to manually create a link from
+/var/lib/bluelog to wherever you want to serve it out of. Perhaps something
+like /var/www/htdocs/bluelog. I left this step out of the installation
+intentionally, as I didn't want to run the risk of clobbering anyone's existing
+website.
+
+To actually start Bluelog Live, you simply need to pass Bluelog the "-l"
+option. You should notice that the information displayed in the console will
+say "Starting Bluelog Live" and that the file locations have changed. Assuming
+everything went as planned, you should be able to point a web browser at the
+server and see the page. If the "Info" box is populated, then everything should
+be working.
+
+While optional, I would suggest running Bluelog Live with the "-x" option,
+which obfuscates the last octet of the discovered device's MAC. It is a small
+detail, but it does prevent people's full MAC address from being displayed on
+the web page. Of course, their MAC is already being broadcast for everyone to
+see...but that is no reason we can't do the right thing.
+
+--------------------------------------------------------------------------------
+- Supported Browsers                                                           -
+--------------------------------------------------------------------------------
+
+Bluelog Live was written as simple as possible so that it can run on the widest
+array of web browsers. It is known to work on pretty much any half-way modern
+browser, including the relatively simplistic browsers included with systems like
+the PlayStation 3 (in fact, the PS3 was used extensively when testing to show
+results on a large screen).
+
+--------------------------------------------------------------------------------
+- Starting Bluelog                                                             -
+--------------------------------------------------------------------------------
+
+As of version 0.9.9, Bluelog Live includes experimental support for starting a
+Bluelog instance in daemon mode. The current method for doing this is very
+simple: the web interface uses SSI to start Bluelog with the following command:
+
+bluelog -ld
+
+This command can be modified in the control.shtml file located in the Bluelog
+Live webroot (by default: /var/lib/bluelog) if you want to customize Bluelog's
+output (such as enabling obfuscation).
+
+The built-in PID checking in Bluelog will prevent starting duplicate instances,
+so there is no danger of accidentally starting a second Bluelog thread.
+
+--------------------------------------------------------------------------------
+- Bluelog Live Mobile Interface                                                -
+--------------------------------------------------------------------------------
+
+As of version 1.0.0, Bluelog Live includes an experimental mobile version of
+the web interface. This version can be accessed at:
+
+http://servername/mobile.shtml
+
+A lot of information is left off of the mobile interface; you won't see the
+information about what Bluelog version is running or what time it started at,
+the "Device Capability" field is also dropped. The mobile version of the site
+simply shows the discovered time, MAC address, name, and class of each device
+found; along with a running total of how many devices have been found so far.
+
+--------------------------------------------------------------------------------
+- livelog.pl                                                                   -
+--------------------------------------------------------------------------------
+
+livelog.pl is an experimental Perl script that can be used to generate a (very)
+basic HTML page out of the files generated by Bluelog Live. This script can
+also be used to generate a page for viewing on the local machine, in the case
+where no web server is available.
+
+To use livelog.pl simply start Bluelog Live as normal, and then run the script
+like so:
+
+$ livelog.pl > live.html
+
+This will create a HTML web page at live.html suitable for viewing on the local
+machine even with simplistic browsers like links. livelog.pl could be greatly
+improved, but I have very little Perl experience, so if you have improvements
+please send them along.
+
+--------------------------------------------------------------------------------
+- Future Development                                                           -
+--------------------------------------------------------------------------------
+
+See the "FUTURE" file for information on the next generation of Bluelog Live.

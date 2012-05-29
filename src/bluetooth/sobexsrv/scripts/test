@@ -1,0 +1,6 @@
+command: accept
+remote: 00:11:22:33:44:55
+local: XX:11:22:33:44:55
+connection_id: 1
+target: bla
+

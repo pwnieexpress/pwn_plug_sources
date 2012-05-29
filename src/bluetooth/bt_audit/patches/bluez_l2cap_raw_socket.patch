@@ -1,0 +1,32 @@
+--- orig/l2cap.c	2003-08-25 13:44:44.000000000 +0200
++++ l2cap.c	2004-02-10 23:29:08.000000000 +0100
+@@ -1663,6 +1663,13 @@
+ 			break;
+ 		}
+ 
++
++		/*
++		 *  for better low-level access
++		 *  put command to all raw sockets
++		 */
++		l2cap_raw_recv(conn, skb);
++		
+ 		switch (cmd.code) {
+ 		case L2CAP_CONN_REQ:
+ 			err = l2cap_connect_req(conn, &cmd, data);
+@@ -1690,7 +1697,6 @@
+ 
+ 		case L2CAP_COMMAND_REJ:
+ 			/* FIXME: We should process this */
+-			l2cap_raw_recv(conn, skb);
+ 			break;
+ 
+ 		case L2CAP_ECHO_REQ:
+@@ -1700,7 +1706,6 @@
+ 		case L2CAP_ECHO_RSP:
+ 		case L2CAP_INFO_REQ:
+ 		case L2CAP_INFO_RSP:
+-			l2cap_raw_recv(conn, skb);
+ 			break;
+ 
+ 		default:

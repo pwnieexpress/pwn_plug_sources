@@ -1,0 +1,15 @@
+v0.2.3
+- fixed problem with makefile for bluesnarfer
+
+v0.2.2
+- fixed problem with makefile for tools
+
+v0.2.1 
+- fixed default location for config file to "/etc/bluetooth/pwntooth.conf"
+- fixed error in number of itterations
+- updated: Blueper, vCardBlaster
+
+v0.2
+- changed install method.
+- installed pwntooth.conf into /etc/bluetooth directory.
+- updated vCardBlaster and Blueper. 

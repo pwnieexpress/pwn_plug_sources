@@ -1,0 +1,305 @@
+ver 2.2:
+	Fix issue with L2CAP CID matching.
+	Add support for L2CAP extended window size decoding.
+	Add support for L2CAP extended control field decoding.
+	Add support for L2CAP information decoding.
+	Add support for AVRCP decoding.
+	Add support for AVCTP decoding.
+
+ver 2.1:
+	Add support for decoding OBEX Action command.
+	Add support for decoding SMP commands.
+	Add support for decoding ATT commands.
+	Add support for missing LE decoding.
+
+ver 2.0:
+	Add support for decoding AMP events.
+	Add support for decoding AMP commands.
+	Add support for decoding LE advertising reports.
+	Add support for L2CAP fixed channel information.
+	Add support for L2CAP ERTM and Streaming Mode.
+	Make BT-Snoop format the default file format.
+	Make verbose parsing the default option.
+
+ver 1.42:
+	Decode the Read Link Policy Settings command.
+	Decode Default Link Policy Settings commands
+	Enable PIE by default if supported.
+	Don't optimize when debug is enabled.
+
+ver 1.41:
+	Improve decoding of HCI connection link type.
+	Fix handling of unsupported L2CAP config options.
+	Add full decoding of L2CAP RFC config option.
+	Reset to L2CAP basic mode when MTU config request is sent.
+
+ver 1.40:
+	Add HCI and LMP decoding support for Simple Pairing.
+
+	Note:
+	This version needs at least bluez-libs-3.14
+
+ver 1.39:
+	Add support for daemon discover protocol.
+	Fix device disconnect handling.
+
+ver 1.38:
+	Add support for daemon mode.
+
+ver 1.37:
+	Add decoding for SCO packet flags.
+	Add decoding for more extended inquiry features.
+	Add missing HCI command and event decodings.
+
+	Note:
+	This version needs at least bluez-libs-3.12
+
+ver 1.36:
+	Add missing HCI command definitions.
+	Add missing HCI event definitions.
+	Add missing HCI error definitions.
+
+ver 1.35:
+	Add partial decoding for eSCO setup.
+	Fix HCI command array size.
+
+ver 1.34:
+	Add reading support for MacOS X packet logger format.
+	Add decoding for AFH host channel classification command.
+	Add decoding for QoS setup command.
+
+ver 1.33:
+	Add support for IPv6 decoding.
+	Add IPv6 connection support.
+
+ver 1.32:
+	Add decoding for link supervision timeout change event.
+	Add decoding for host controller to host flow control setting.
+	Add decoding for host number of completed packets.
+	Add decoding for host buffer size command.
+	Fix OBEX header parsing.
+
+	Note:
+	This version needs at least bluez-libs-3.3
+
+ver 1.31:
+	Add Ericsson LMP decoding support.
+	Update sniff subrating decoding.
+	Update UUID and attribute definitions.
+
+	Note:
+	This version needs at least bluez-libs-3.0
+
+ver 1.30:
+	Add decoding for pause encryption feature.
+	Add generic RFCOMM streaming helpers.
+	Add HDLC decoding support to the PPP parser.
+	Add unslip support and basic protocol decoding.
+	Add PPP extraction support.
+	Move TCP/IP decoders into a separate file.
+	Fix DoS problem of the L2CAP parser.
+
+ver 1.29:
+	Obfuscate the BD_ADDR if no vendor events are requested.
+	Decode and display binary strings correctly.
+	Allow null-terminated text strings.
+	Add definitions for Apple Agent.
+	Add skeleton for AVCTP parser.
+	Add skeleton for PPP parser.
+
+ver 1.28:
+	Add missing UUID definitions and translations.
+	Add option to disable vendor commands and events.
+	Add decoding for hold mode, sniff mode and park state.
+	Add decoding for sniff subrate command complete event.
+	Decode class of device and BD_ADDR for inquiry filter.
+	Make it possible to obfuscate pin codes and link keys.
+
+	Note:
+	This version needs at least bluez-libs-2.23
+
+ver 1.27:
+	Decode the extended inquiry response payload.
+	Update HCI_DEV_NONE frame format.
+	Update the CSR PS key handling.
+	Add another bunch LMP message decodings.
+	Add compile time buffer checks (FORTIFY SOURCE).
+
+ver 1.26:
+	Fix memory leak with lmp_vertostr() function.
+	Fix FHS packet decoding for slave connections.
+	Add support for decoding more LMP messages.
+	Display the data of extended inquiry results.
+	Correct HCI command and event string arrays.
+	Add SCO audio extraction support.
+
+ver 1.25:
+	Add new attribute identifiers and UUID definitions.
+	Add decoding support for extended inquiry response.
+	Add more detailed BCCMD decoding.
+	
+	Note:
+	This version needs at least bluez-libs-2.20
+
+ver 1.24:
+	Allow selection of system device.
+	Handle system events and commands.
+
+ver 1.23:
+	Add decoding support for inquiry scan type.
+	Fix connection accept timeout and scan enable decoding.
+	Show human readable timestamps only in verbose decoding mode.
+	Dump raw BNEP payload only in non-verbose decoding mode.
+	Update CSR BCCMD support and correct uint32 decoding.
+
+	Note:
+	This version needs at least bluez-libs-2.18
+
+ver 1.22:
+	Only do verbose decoding when requested.
+	Fix number of completed packets decoding.
+	Improve the decoding of CSR vendor commands and events.
+	Use human readable timestamps.
+	Add support for the BTSnoop file format.
+
+ver 1.21:
+	Clear L2CAP states when receiving the HCI disconnect.
+	Make the OBEX parser aware of that RFCOMM is a stream.
+	Update HCI verbose decoding routines.
+	Add CSR verbose decoding support.
+
+	Note:
+	This version needs at least bluez-libs-2.17
+
+ver 1.20:
+	Workaround for inquiry results with RSSI and page scan mode.
+	Decode almost every used HCI commands and events.
+
+	Note:
+	This version needs at least bluez-libs-2.16
+
+ver 1.19:
+	Fix error message decoding.
+	Add IAC decoding support.
+	Add LMP parser support.
+	Add BCCMD decoding support.
+	Add L2CAP retransmission and flow control decoding.
+
+ver 1.18:
+	Fix declaration of the SDP data structures.
+	Extend the HCI verbose decoding support.
+
+ver 1.17:
+	Add support for HCI verbose decoding.
+	Add support for L2CAP verbose decoding.
+	Add first version of the BPA sniffer utility.
+
+	Note:
+	This version needs at least bluez-libs-2.15
+
+ver 1.16:
+	Add UUID translation for WAP.
+	Fix display of UUID 128.
+	Fix display of L2CAP config hint bit and QoS option.
+	Fix parsing of SDP continuation state.
+
+ver 1.15:
+	Update the L2CAP channel counting routine.
+	Fix SBC codec specific decoding.
+	Fix AVDTP signal channel header decoding.
+	Add decoding for the AVDTP media channel header.
+
+ver 1.14:
+	Count the number of L2CAP channels per PSM.
+	Differ between the AVDTP signal and media channel.
+	Add full decoding of the AVDTP signal channel information.
+
+ver 1.13:
+	Update many UUID to text translations.
+	Add support for sending and receiving dumps over TCP.
+	Add support for the vendor packets of the Digianswer BPA.
+
+	Note:
+	This version needs at least bluez-libs-2.11
+
+ver 1.12:
+	Fix whitespace stuff for extended dump.
+	Add support for dynamic RFCOMM channels.
+	Add initial OBEX parser support.
+
+ver 1.11:
+	Trace company id from the chip manufacturer.
+	Support extended dump functionality.
+	Use the L2CAP_CONF_RFC_MODE value.
+	Use bt_get_unaligned() for unaligned access.
+	Make compiling with debug information optional.
+	Don't override CFLAGS from configure.
+
+	Note:
+	This version needs at least bluez-libs-2.10
+
+ver 1.10:
+	Fix display of L2CAP CID.
+	Show L2CAP config values only when they are present.
+	Decode L2CAP information request and response.
+	Update autoconf and automake routines.
+
+ver 1.9:
+	Initial AVDTP parser support.
+	Various minor fixes and cleanups.
+
+ver 1.8:
+	Support Bluetooth 1.2 HCI commands and events.
+	Decode RFCOMM credit based flow control.
+
+ver 1.7:
+	HCRP parser support.
+	CAPI parser support.
+	CMTP reassembly support.
+	Support for dynamic PSM.
+
+ver 1.6:
+	HIDP parser support.
+	Various fixes for the SDP parser.
+
+ver 1.5:
+	Included man page for hcidump.
+	Minor fix for HCI grabber.
+
+ver 1.4:
+	CMTP parser support.
+	Various fixes for SDP, RFCOMM and BNEP parsers.
+
+ver 1.3:
+	RFCOMM and BNEP parser fixes.
+	Use getopt_long instead of argp.
+	Added --psm option.
+	Automake build environment.
+	Other minor fixes.
+
+ver 1.2:
+	BNEP support.
+	Correct filter initialization.
+	Minor fixes.
+
+ver 1.1:
+	SCO support. 
+	Support for frame time stamps.
+	RAW mode and other minor fixes.
+
+ver 1.0:
+	L2CAP fragment reassembly.
+	RFCOMM parser (Wayne Lee).
+	SDP parser (Ricky Yuen). 
+	Simple filtering.
+
+ver 0.2:
+	L2CAP parsing. PSM tracking.
+	HCI events and commands parsing.
+	Packet parser moved to unified library (libparser).
+	HCI socket filter support.
+	Improved command line option parsing.
+	Improved output format.
+
+ver 0.1:
+	Initial implementation.

@@ -1,0 +1,18 @@
+Install
+
+   pwntooth
+
+1. Run "make" to compile binary.
+2. Run "make install" to install into system.
+3. Run "make clean" to delete binary from pwntooth directory.
+4. Edit pwntooth.conf for specified attacks.  It can be found in "/etc/bluetooth/".
+
+
+   addition tools
+
+I provided the addition tools used by pwntooth.  Feel free to download tools from their origional sources and/or update tools.
+
+1. "cd" to "tools" directory.
+2. Run "make" to compile binaries.
+3. Run "make install" to install into system.
+4. Run "make clean" to delete binaries directory.

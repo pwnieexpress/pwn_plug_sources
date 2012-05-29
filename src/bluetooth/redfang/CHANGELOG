@@ -1,0 +1,15 @@
+2.5	October 2003 Release
+	
+	[ow] Added CHANGLOG and OTHERS to pay credit where it's due
+	[ow] Fixed silly cosmetic bug on banner() being printed twice
+	[sk] Added device enumeration
+	[sk] Added text file logging
+	[sk] Added vendor ranges / moved vendors to .h
+	[sk] Fixed bit issues that caused the wrong address to be reported
+	[sh] Code streamline
+	[sh] Added initial vendor ranges / support for vendor+xxxxxx
+	[sh] Fixed thread code / did code tidy
+	[ow] Broken thread code	
+
+1.0	Initial May 2003 Release
+	

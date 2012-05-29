@@ -1,0 +1,32 @@
+--- ./drivers/mmc/core/core.c.orig	2009-06-09 21:05:27.000000000 -0600
++++ ./drivers/mmc/core/core.c	2009-06-23 23:24:58.473855897 -0600
+@@ -286,9 +286,9 @@ void mmc_set_data_timeout(struct mmc_dat
+ 			 * The limit is really 250 ms, but that is
+ 			 * insufficient for some crappy cards.
+ 			 */
+-			limit_us = 300000;
++			limit_us = 500000;
+ 		else
+-			limit_us = 100000;
++			limit_us = 200000;
+ 
+ 		/*
+ 		 * SDHC cards always use these fixed values.
+--- ./drivers/mmc/host/mvsdio.c.orig	2009-06-09 21:05:27.000000000 -0600
++++ ./drivers/mmc/host/mvsdio.c	2009-06-23 23:20:36.085662093 -0600
+@@ -21,6 +21,7 @@
+ #include <linux/irq.h>
+ #include <linux/gpio.h>
+ #include <linux/mmc/host.h>
++#include <linux/mmc/sd.h>
+ 
+ #include <asm/sizes.h>
+ #include <asm/unaligned.h>
+@@ -148,6 +149,7 @@ static void mvsd_request(struct mmc_host
+ 
+ 	dev_dbg(host->dev, "cmd %d (hw state 0x%04x)\n",
+ 		cmd->opcode, mvsd_read(MVSD_HW_STATE));
++	if (cmd->opcode == SD_SWITCH) mdelay(1); /* Voodoo */
+ 
+ 	cmdreg = MVSD_CMD_INDEX(cmd->opcode);
+ 

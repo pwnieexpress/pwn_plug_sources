@@ -1,0 +1,104 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+  <meta name="Author" content="Davide Libenzi">
+  <meta name="GENERATOR" content="Emacs">
+  <meta name="Keywords"
+ content="ussp-push,bluetooth,linux,bluez,obex,symbian,nokia">
+  <meta name="ProgId" content="FrontPage.Editor.Document">
+  <title>ussp-push Home Page</title>
+</head>
+<body style="color: rgb(0, 0, 255);">
+<p style="font-family: monospace;" align="center"><span
+ style="font-weight: bold;">ussp-push</span><br>
+<br>
+</p>
+<p style="font-family: monospace;" align="left"><span
+ style="font-weight: bold;">ussp-push</span> is a
+OBEX object pusher for Linux, using the <a href="http://www.bluez.org/">BlueZ</a>
+BlueTooth stack. The original <span style="font-weight: bold;">ussp-push</span>
+implementation required explicit binding to RFCOMM channels before the
+usage, that made it quite cumbersome to use. I added BlueTooth name
+resolution, SDP service resolution, and direct access to remote
+BlueTooth listening channels.
+The syntax now supported by <span style="font-weight: bold;">ussp-push</span>
+is:<br>
+</p>
+<p style="font-family: monospace;" align="left"><span
+ style="font-style: italic;">$ ussp-push [--dev
+DEVID] [--timeo TIMEO] {DEVICE,
+BTADDR@[BTCHAN]} LFILE RFILE</span><br>
+</p>
+<p style="font-family: monospace;" align="left">Where:<br>
+<br>
+</p>
+<table
+ style="text-align: left; width: 1031px; height: 136px; font-family: monospace;"
+ border="0" cellpadding="2" cellspacing="2">
+  <tbody>
+    <tr>
+      <td style="vertical-align: top;">DEVID<br>
+      </td>
+      <td style="vertical-align: top;">HCI device ID (0, 1, ...). Valid
+only if the <span style="font-style: italic;">BTADDR@BTCHAN syntax is
+used<br>
+      </span></td>
+    </tr>
+    <tr>
+      <td style="vertical-align: top;">TIMEO<br>
+      </td>
+      <td style="vertical-align: top;">RFCOMM connect timeout in seconds<br>
+      </td>
+    </tr>
+    <tr>
+      <td>DEVICE<br>
+      </td>
+      <td style="vertical-align: top;">RFCOMM device file (like
+/dev/rfcomm0)</td>
+    </tr>
+    <tr>
+      <td style="vertical-align: top;"><span style="font-style: italic;">BTADDR@[BTCHAN]</span></td>
+      <td style="vertical-align: top;"><span style="font-style: italic;">BlueTooth
+address and
+channel of the remote OBEX listener. </span><span
+ style="font-style: italic;">The BTADDR can be either a BlueTooth
+address of a BlueTooth device name. If the BTCHAN is not specified, an
+SDP quesry is performed to retrieve the remote OBEX service channel<br>
+      </span></td>
+    </tr>
+    <tr>
+      <td style="vertical-align: top;">LFILE<br>
+      </td>
+      <td style="vertical-align: top;"><span style="font-style: italic;">Local
+file path</span></td>
+    </tr>
+    <tr>
+      <td style="vertical-align: top;">RFILE<br>
+      </td>
+      <td style="vertical-align: top;"><span style="font-style: italic;">Remote
+file name</span></td>
+    </tr>
+  </tbody>
+</table>
+<br style="font-family: monospace;">
+<p style="font-family: monospace;" align="center"><b>License and
+Software</b></p>
+<p style="font-family: monospace;" align="left"><b><i>ussp-push</i></b>
+is made available through the <a
+ href="http://www.gnu.org/copyleft/gpl.html">GNU
+GPL</a> license. Please read carefully the <a
+ href="http://www.gnu.org/copyleft/gpl.html">license</a>
+before using the software. The <i><b>ussp-push</b></i> source is
+available here :</p>
+<br style="font-family: monospace;">
+<a style="font-family: monospace;" href="ussp-push-0.11.tar.gz">ussp-push-0.11.tar.gz</a><br
+ style="font-family: monospace;">
+<br style="font-family: monospace;">
+<br style="font-family: monospace;">
+<br style="font-family: monospace;">
+<a style="font-family: monospace;" href="davide.html">Back Home</a><br
+ style="font-family: monospace;">
+<br style="font-family: monospace;">
+<br style="font-family: monospace;">
+</body>
+</html>

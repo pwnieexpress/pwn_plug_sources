@@ -1,0 +1,7 @@
+src/         source directory
+patches/     patch directory
+scripts/     script directory
+README       what is this?
+INSTALL      howto install
+CHANGELOG    history
+FILES        this file

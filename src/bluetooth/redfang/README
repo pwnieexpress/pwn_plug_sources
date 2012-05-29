@@ -1,0 +1,27 @@
+redfang 2.5 - the bluetooth hunter
+(c)2003 @stake Inc
+
+.intro
+fang is a small proof-of-concept application to find non discoveredable
+bluetooth devices. This is done by brute forcing the last six (6) bytes of 
+the bluetooth address of the device and doing a read_remote_name().
+
+this release of redfang now supports multiple threads and has now been 
+modified for multiple devices and the code has been stream lined. It has 
+been made a little more abstract. There is the start of an address parser that 
+supports vendor+nnnnnn addresses, these exist in list.h.
+
+this release of redfang was developed in collaboration with QinetiQ as part
+of their work in the DTI Next Wave Technologies project FORWARD.
+
+.issues
+none at present time
+
+.tested
+redhat   9
+mandrake 9.1
+
+.credits
+Ollie Whitehouse [ollie@atstake.com]		initial code / patches
+Simon Halsall    [s.halsall@eris.qinetiq.com]   threads and tidy.
+Stephen Kapp     [skapp@atstake.com] 		patches / lots of functionality

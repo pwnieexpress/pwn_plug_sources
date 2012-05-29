@@ -1,0 +1,21 @@
+requirements:
+	Linux (http://www.debian.org/)
+	BlueZ (http://www.bluez.org/)
+
+patch kernel:
+	to use the RAW socket scanning you need to patch your BlueZ
+
+	NOT required since 2.6.5
+
+	Linux 2.4.x:
+		cd /usr/src/linux/net/bluetooth
+		patch -p0 < bluez_l2cap_raw_socket.patch
+		(rebuild modules)
+
+build:
+	cd src
+	make
+
+run:
+	./psm_scan
+	./rfcomm_scan

@@ -1,0 +1,44 @@
+#
+# UNrooted.net example hack
+#
+
+To use this you need :
+ - OpenOBEX >= 1.1(http://sourceforge.net/projects/openobex/)
+ - BlueZ (http://bluez.sourceforge.net/download/download.html)
+
+Once you have the utility built you need to use rfcomm to bind a serial port
+device to an RFCOMM channel which accept OBEX Push data, then you should be
+able to push a file using:
+
+./ussp-push /dev/ttyU1 ./localimage.gif Picture.gif
+
+Where '/dev/ttyU1' is the is the serial port device the RFCOMM channel is bound
+to, './localimage.gif' is a file on the local system, and 'Picture.gif' is the
+name to push the file as.
+
+There are notes about this hack, and some general intro to BlueZ, available on
+my site: http://www.unrooted.net/hacking/bluez-rfcomm-obex.html
+
+                         Enjoy,
+                         Rev (reverend@unrooted.net)
+
+--------------------------------------------------------------------------
+* Tue, Sep 27 2005 - Davide Libenzi <davidel@xmailserver.org>
+
+Version 0.5 supports a new --dev parameter to set the HCI device ID (numeric)
+to be used by ussp-push, in case more BT devices are available on the system.
+
+
+* Sun, Mar 06 2005 - Davide Libenzi <davidel@xmailserver.org>
+
+The new version of ussp-push supports direct BT connections without RFCOMM
+channel binding. So, if in the example above /dev/ttyU1 was linked to the
+BT device name "Mooz" and the OBEX listening channel on "Mooz" is 10, we can
+now use:
+
+./ussp-push Mooz@10 ./localimage.gif Picture.gif
+
+
+
+- Davide
+

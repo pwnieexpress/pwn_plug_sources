@@ -1,0 +1,19 @@
+1.0.1 6. Oct. 2007
+ -fixed code for talking to external handler
+ -fixed python demo handler
+ -old palmos sdp bug fix
+ -better unicode handling using iconv
+ -improved path handling and checks for directory traversal
+1.0.0-preview4 24. Nov. 2005
+ -fixed format string vulnerability in dosyslog (obexsrv.c)
+ -added file and directory deletion
+ -fixed lsdir parent-folder bug
+ -added some insane amount of casts to make gcc-4 happy
+1.0.0-preview3 18. Nov. 2005 
+ - everything is new!
+0.1.2 28. Oct. 2005 
+- added directory handling, file deletion, logging and many bug fixes
+0.1.1 26. Sep. 2005 
+ - added auth/enc support and some minor fixes
+0.1 13. Sep. 2005 
+ - initial version

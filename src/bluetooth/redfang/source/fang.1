@@ -1,0 +1,67 @@
+.TH FANG 1 "Oct 15 2003" Fang "Linux System Administration"
+.SH NAME
+fang \- Hunt bluetooth devices
+.SH SYNOPSIS
+.B fang [-h]
+.br
+.B fang [-dls] -t timeout -r from-to -n num -o logfile
+
+.SH DESCRIPTION
+.LP
+.B
+fang
+is used to hunt bluetooth devices down
+.SH OPTIONS
+
+.TP
+.BI -r
+start-finish
+
+i.e. 3com+89EE76-00803789EEff
+
+An address can also be manf+nnnnnn, where manf is listed with the -l option 
+and nnnnnn is the tail of the address. All addresses must be 12 characters long
+
+.TP
+.BI -i
+timeout
+
+The interval time between hci calls. A sensible range is from x - y and the
+default is 10000.
+
+.TP
+.BI -s
+
+Perform a standard Bluetooth device discovery
+
+.TP
+.BI -o
+filename
+
+Write log to text file
+
+.TP
+.BI -n
+num
+
+The number of dongles. It is assumed that they are from hci0 to hcinum.
+
+.TP
+.BI -d
+
+Show more debug information.
+
+.TP
+.BI -l
+
+List the manufacturer codes.
+
+.SH AUTHORS
+Written by Ollie Whitehouse                     <ollie@atstake.com>
+enhanced with threads by Simon Halsall          <s.halsall@eris.qinetiq.com>
+enhanced with service discovery by Stephen Kapp <skapp@atstake.com>
+
+.PP
+man page by Ollie Whitehouse <ollie@atstake.com>
+additions by Simon Halsall   <s.halsall@eris.qinetiq.com>
+additions by Stephen Kapp    <skapp@atstake.com>

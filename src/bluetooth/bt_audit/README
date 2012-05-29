@@ -1,0 +1,26 @@
+bt_audit v0.1.1 (c) 2003-2006 by Collin R. Mulliner <collin@betaversion.net>
+
+
+bt_audit is a suit of programs and scripts to do Bluetooth(tm) device auditing.
+
+The suit currently consists of two port scanners, psm_scan for the L2CAP layer
+and rfcomm_scan for the RFCOMM layer.
+
+psm_scan:
+	find open L2CAP PSMs by scanning a certain range
+	
+rfcomm_scan:
+	find open RFCOMM channels by scanning a certain range
+
+btdsd_smaple.sh:
+	scan script for device database
+
+These tools were written as part of the "bluetooth device security database"
+project. The main intention behind writing these was to discover some 
+manufacturer backdoors or special features.
+
+If you find any open PSMs or RFCOMM channel that don't relate to a service
+entry in the SDP database, please report the device (manufacturer, version, ..)
+
+email: btdsd@betaversion.net
+web:   http://www.betaversion.net/btdsd/

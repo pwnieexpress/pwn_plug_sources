@@ -1,0 +1,41 @@
+sobexsrv - or the scripting OBEX server
+
+is a OBEX server implementation based on the openobex library focused towards
+Bluetooth as the transport layer. The server itself only supports the minimal
+needed OBEX commands like connect, disconnect, put, get and setpath. The
+actual services need to be implemented outside of the server through e.g.
+a script written in bash, perl, python or C. It is believed that through this
+it is easy to implement nice and good behaving services.
+
+How does it work? sobexsrv accepts any connection and calls the external
+handler script for each command send by the client. The handler script
+then can control the action taken by the server through it's return code
+(ok,success,permit=1 and error,deny!=1).
+
+The handler script reads the given command and parameters from stdin and
+writes required return values to stdout and of course sets the exit code.
+The handler input looks somehow like this (and is terminated by a newline
+like http).
+
+command: get
+local: AA:BB:CC:DD:EE:FF
+remote: 11:22:33:44:55:66
+path: tmp
+filename: CollinMulliner.vcf
+connectionid: 0
+type: text/plain
+count: 0
+target: xyz
+length: 0
+
+If the length indicates data (length > 0) the data follows the header. Output
+data looks the same but is only required for the get command (also only the
+length header and data are required).
+
+The only special command is accept, this is a non OBEX command which is only
+used by the server to indicate an incoming connection. To deny the connection
+the return code needs to be <1 and 3<. 1 is to accept, 2 is to accept with
+Bluetooth authentication and 3 is accept with authentication and encryption.
+
+A default handler script with support for basic OPUSH and OBEXFTP is included
+in the scripts directory.

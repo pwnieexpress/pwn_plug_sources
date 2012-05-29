@@ -1,0 +1,21 @@
+
+run 'make'
+
+make
+
+run fang
+
+./redfang -n 4 -r start-finish -t timeout
+
+note: 100000 is the timeout I have found anywhere between 25000 and 100000 
+yield results. However 100000 will give reliable results (although slow)
+
+The new default timeout is 25000 which seems alto lower. I have found that 
+devices get missed on subsequent runs due to the dongles getting in a tiz.
+The ./reinit program just downs then and reloads the drivers to make sure all
+system calls are cleared. If you have problems with devices getting missed then
+up the timeout as Ollie has suggested above.  This has only been tested on a 
+T68i at present.
+
+P.S. Please look at the ./reinit program it is pretty lame and may down devices
+     you don't want it to.

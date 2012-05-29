@@ -1,0 +1,20 @@
+DEVS=`hciconfig | grep ^hci | cut -d: -f1`
+
+for i in ${DEVS}; do
+   hciconfig ${i} down
+done
+
+rmmod hci_usb bluez
+modprobe hci_usb bluez
+
+sleep 10
+
+for i in ${DEVS}; do
+   hciconfig ${i} up
+   echo Done ${i}
+done
+
+for i in ${DEVS}; do
+   hciconfig ${i} up
+   echo Done ${i}
+done

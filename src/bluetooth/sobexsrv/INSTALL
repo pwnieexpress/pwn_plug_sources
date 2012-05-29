@@ -1,0 +1,15 @@
+requirements for sobexsrv:
+ bluez-libs (www.bluez.org)
+ bluez-utils (www.bluez.org)
+ openobex (openobex.sourceforge.net)
+
+build:
+ cd src
+ make
+
+install:
+ su
+ make install
+
+run:
+ sobexsrv -h

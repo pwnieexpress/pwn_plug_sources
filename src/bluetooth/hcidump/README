@@ -1,0 +1,33 @@
+BlueZ - Bluetooth protocol stack for Linux
+******************************************
+
+Copyright (C) 2000-2002  Maxim Krasnyansky <maxk@qualcomm.com>
+Copyright (C) 2003-2011  Marcel Holtmann <marcel@holtmann.org>
+
+Bluetooth packet analyzer
+
+
+Compilation and installation
+============================
+
+In order to compile Bluetooth analyzer you need following software packages:
+	- Linux Bluetooth protocol stack (BlueZ)
+	- GCC compiler
+
+To configure run:
+	./configure --prefix=/usr --mandir=/usr/share/man
+
+Configure automatically searches for all required components and packages.
+
+To compile and install run:
+	make && make install
+
+
+Information
+===========
+
+Mailing lists:
+	linux-bluetooth@vger.kernel.org
+
+For additional information about the project visit BlueZ web site:
+	http://www.bluez.org

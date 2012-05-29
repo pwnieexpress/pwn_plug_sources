@@ -1,0 +1,18 @@
+For the script only!
+
+There are various configuration settings in the handler script which can be
+changed to "customize" sobexsrv for your needs.
+
+important
+ BASEPATH path to default INBOX
+
+debug
+ LOGLEVEL level of logging (see file)
+ LOGFILE  file to log to
+
+security
+ SECURITYLEVEL bluetooth link level security settings
+ OVERWRITE     (on/off )allow client to overwrite or delete files
+
+
+See handler script for details and defaults.

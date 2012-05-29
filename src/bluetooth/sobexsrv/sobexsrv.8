@@ -1,0 +1,146 @@
+.TH SOBEXSRV 8 "Nov 12 2005" "" "System Daemon"
+.SH NAME
+sobexsrv \- secure scripting obex server
+.SH SYNOPSIS
+.B sobexsrv -icHIrRofFdmpslSvh
+
+.SH DESCRIPTION
+.LP
+.B sobexsrv
+is a Bluetooth OBEX server with 
+.B Bluetooth Security Mode-2 
+(application triggered security) support. It implements 
+.B OPUSH
+(put), 
+.B OPULL
+(get) and 
+.B OBEX-FTP
+(setpath + directory listing) and therefore is a full OBEX server.
+Further it supports pulling generic mime-types and provides a capability object.
+.LP
+.B sobexsrv 
+was designed with flexibility and security in mind and supports
+.B chroot
+(if suid root drop to calling uid immediately). For flexibility
+a scripting interface provides access to all functionalities of the server and
+therefore allows implementation of further OBEX services on top of sobexsrv.
+.SH OPTIONS
+.TP
+.BI -h
+Gives a list of possible options.
+.TP
+.BI -v
+Print version.
+.TP
+.BI -i " [<hciX>|<BD_ADDR>]"
+Specifies the hci device or bdaddr to bind to.
+.TP
+.BI -c " <channel>"
+Listen on the specified RFCOMM channel. If this option is not specified the first available channel will be used. Legal range for
+channel is 1-31 and 0 to force auto selection of first available channel. Also see option
+.B -p
+to print the selected channel.
+.TP
+.BI -H " <path>"
+Use application at
+.I path
+as the handler for all OBEX events. See 
+.B writing a handler script
+below.
+.TP
+.BI -I
+.I
+Internal
+mode, don't use handler application!
+.TP
+.BI -r " <path>"
+Use path as default INBOX. Only internal mode.
+.TP
+.BI -R
+chroot(2) to default INBOX. Needs root privileges (SUID)! Privileges are dropped to calling uid immediately after calling chroot(2). Also make sure you either have a /etc/passwd and a /etc/groups in your new root or disable owner listing or only show numeric owners. See option 
+.B -l.
+.TP
+.BI -o
+Don't register OPUSH service at local ServiceDiscoveryProtocol Server.
+.TP
+.BI -f
+Don't register OBEX-FTP service at local ServiceDiscoveryProtocol Server.
+.TP
+.BI -F
+Switch off obex-ftp folder listing. Only internal mode.
+.TP
+.BI -d
+.I
+Debug
+don't become a daemon.
+.TP
+.BI -S
+Enable transfer log via syslog(8). Only internal mode.
+.TP
+.BI -p
+Print the selected RFCOMM channel, see option 
+.B -c.
+.TP
+.BI -s " <level>"
+Set Bluetooth security mode-2 level. Legal values are:
+.B 1
+(insecure) everybody can connect,
+.B 2
+authentication required and
+.B 3
+authentication and encryption required. Only internal mode.
+.TP
+.BI -l " <list_options>"
+Specify what information to show in a directory listing for OBEX-FTP when running in
+.B internal mode.
+Legal values are any combination of:
+.B O
+show owner and group,
+.B N
+show numeric owner and group (needs O),
+.B P
+show permissions,
+.B T
+show times and
+.B D
+show parent directory (".."). Use X to disable all and only show name, size and type.
+.TP
+.BI -m " <path>"
+Specify the path for
+.B generic mime get.
+The directory structure under path must look like 
+.I left/right
+of a given mine type. For 
+.I text/x-vcard 
+a directory named 
+.I text
+with a file named
+.I x-vcard
+must exist. There is no default path for this option and therefore it need to be set explicitilly. Only internal mode.
+
+.SH WRITING A HANDLER SCRIPT
+Write this!
+.br
+.br
+.SH EXAMPLES
+.br
+.TP
+Simple setup using the internal mode, logging with syslog(8) and INBOX in /tmp.
+.br
+.br
+.B sobexsrv -IS -r /tmp
+.br
+.TP
+Simple secure setup with chroot and Bluetooth security mode-2.
+.br
+.br
+.B sobexsrv -s 2 -ISR -l X -r /tmp
+.TP
+Using the scripting handler and binding to second hci device.
+.br
+.br
+.B sobexsrv -i hci1 -H /usr/local/bin/sobexsrv_handler
+
+.SH AUTHORS
+Written by Collin R. Mulliner <collin(AT)mulliner.org>
+Web: http://www.mulliner.org/bluetooth/

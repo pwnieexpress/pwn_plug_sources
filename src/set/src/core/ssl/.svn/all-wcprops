@@ -1,0 +1,23 @@
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/!svn/ver/742/social_engineering_toolkit/src/core/ssl
+END
+__init__.py
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/!svn/ver/742/social_engineering_toolkit/src/core/ssl/__init__.py
+END
+ssl.py
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/!svn/ver/742/social_engineering_toolkit/src/core/ssl/ssl.py
+END
+PoC_SSL.py
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/!svn/ver/742/social_engineering_toolkit/src/core/ssl/PoC_SSL.py
+END

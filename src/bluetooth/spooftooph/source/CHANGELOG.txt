@@ -1,0 +1,38 @@
+v0.5
+- Modified flags
+  - Depretiated
+    -r: Assign random NAME, CLASS, and ADDR
+    -l <log>: Load SpoofTooph CSV logfile
+    -d <log>: Dump scan into SpoofTooph CSV logfile
+  - New
+    -w <file>: Write to CSV file
+    -r <file>: Read from CSV file
+    -R: Assign random NAME, CLASS, and ADDR
+    -m: Specify multiple interfaces during selection
+    -u: USB delay.  Interactive delay for reinitializing interface
+
+v0.4.1 - 06/15/2011
+- Took out some testing code
+
+v0.4 - 03/24/2011
+- Save file on exit.
+- Fixed problem with saving log.
+- Fixed problem with closing threads.
+- Changed probes for device name.  Scan runs much much faster now.
+
+v0.3
+- Fixed socket closing error
+- Fixed log data verification for valid ADDR and CLASS
+- Changed logging format to CSV: ADDR,CLASS,NAME
+- Added -m flag for choosing multiple interfaces to use for cloning 
+  (Useful to test Man-In-The-Middle attacks)
+- Fixed the problem with reading in the Class from a log
+- Fixed overflow problem with array of devices
+- Fixed selection of Bluetooth interface from a always using
+  interface hci0
+- Changed device array to dynmically resize
+- Added -b flag for specifying the number of Bluetooth devices
+  to display per page
+
+v0.1
+- Initial release
