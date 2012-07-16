@@ -88,7 +88,7 @@ source /root/.bashrc
 echo "[+] Added msfupdate alias to root's bashrc."
 
 # Update release version
-sed -i 's/Release 1.1.? \[May 2012\]/Release 1.1.2 \[July 2012\]/g' /etc/motd.tail
+sed -i 's/Release 1.1.*\]/Release 1.1.2 \[July 2012\]/g' /etc/motd.tail
 echo "[+] Release version updated successfully."
 
 # Done
