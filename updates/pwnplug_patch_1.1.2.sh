@@ -3,7 +3,7 @@
 # pwnieexpress.com
 # Revision 7.16.2012
 
-plug_release=""`grep -o "Release 1.1" /etc/motd`""
+plug_release=""`grep -o "Release 1.1" /etc/motd.tail`""
 
 echo ""
 
@@ -22,7 +22,7 @@ fi
 
 # Verify current Pwn Plug release is 1.1 or greater
 if [ "$plug_release" == "Release 1.1" ] ; then 
-    echo "[+] Pwn Plug is Release 1.1"
+    echo "[+] Pwn Plug is eligible for update."
 else
     echo "[-] This patch requires Pwn Plug Release 1.1 or greater. Aborting..."
     echo "[-] You can download the 1.1 upgrade at:                            "
@@ -33,7 +33,8 @@ fi
 
 echo ""
 echo "       === Pwn Plug Patch 1.1.2 ===         "
-echo "----------------------------------------------------------------"
+echo ""
+echo "This update will require internet access to install packages."
 echo ""
 echo "Press ENTER to continue, CTRL+C to abort."
 read INPUT
@@ -42,18 +43,25 @@ echo ""
 # If patch 1.1.1 is applied, undo the applicable 1.1.1 modifications
 if [ "`grep -o 1.1.1 /etc/motd.tail`" == "1.1.1" ] ; then 
     
-    # move the pentest directory back over to the NAND disk 
-    
+    # move the pentest directory back over to the NAND disk
     rm /pentest
 
     if [ -d /storage/pentest ]; then
         echo "[+] Moving pentest tools back to internal NAND disk."
-        mv /storage/pentest /pentest
+        mv -v /storage/pentest /pentest
     else
         echo "[-] Unable to copy pentest tools back to NAND disk."
         echo "[-] Please contact support@pwnieexpress.com for a "
         echo "[-] copy of the latest pentest tools."
     fi
+
+    if [ -d /storage/msf3 ]; then
+        echo "[+] Removing SVN copy of metasploit."
+        rm -rf /storage/msf3
+    else
+        echo "[-] Warning: Unable to locate svn copy of metasploit."
+    fi
+
 else
     # Create mount point for SD card. Unfortunately we can't rely on the SD card being 
     # available, so don't try to  
@@ -80,7 +88,7 @@ source /root/.bashrc
 echo "[+] Added msfupdate alias to root's bashrc."
 
 # Update release version
-sed -i 's/Release 1.1 \[May 2012\]/Release 1.1.2 \[July 2012\]/g' /etc/motd.tail
+sed -i 's/Release 1.1.? \[May 2012\]/Release 1.1.2 \[July 2012\]/g' /etc/motd.tail
 echo "[+] Release version updated successfully."
 
 # Done
@@ -91,7 +99,3 @@ echo " card is not required in this version. You may now use all     "
 echo " functionality of your Pwn Plug without the SD card.           "
 echo "---------------------------------------------------------------"
 echo ""
-
-cd /root
-rm pwnplug_patch*
-
