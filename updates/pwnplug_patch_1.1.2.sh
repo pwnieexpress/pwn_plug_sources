@@ -62,10 +62,16 @@ if [ "`grep -o 1.1.1 /etc/motd.tail`" == "1.1.1" ] ; then
         echo "[-] Warning: Unable to locate svn copy of metasploit."
     fi
 
+    # Clean up the 
+
 else
     # Create mount point for SD card. Unfortunately we can't rely on the SD card being 
-    # available, so don't try to  
+    # available, so don't try to mount it. 
     mkdir /storage
+
+    # Add a line to automount the sd card into /storage (see manual for how to format)
+    echo "/dev/mmcblk0p1 /storage ext2 rw 0 0" >> /etc/fstab
+
 fi
 
 echo "[+] Removing /opt/metasploit/msf3..."
