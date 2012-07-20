@@ -87,8 +87,10 @@ echo "alias msfupdate='cd /opt/metasploit/msf3 && git pull origin master'" >> /r
 source /root/.bashrc
 echo "[+] Added msfupdate alias to root's bashrc."
 
-# Update release version
-sed -i 's/Release 1.1.*\]/Release 1.1.2 \[July 2012\]/g' /etc/motd.tail
+# Update release version for community or regular edition
+sed -i 's/Release 1.1.1c.*\]/Release 1.1.2c \[July 2012\]/g' /etc/motd.tail
+sed -i 's/Release 1.1.1 .*\]/Release 1.1.2 \[July 2012\]/g' /etc/motd.tail
+
 echo "[+] Release version updated successfully."
 
 # Done
