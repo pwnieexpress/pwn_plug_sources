@@ -86,7 +86,7 @@ echo "[+] Git installed."
 echo "[+] Downloading PX Slimline Metasploit fork to /opt/metasploit/msf3..."
 mkdir /opt/metasploit/msf3
 cd /opt/metasploit/msf3
-git clone https://github.com/pwnieexpress/metasploit-framework.git .
+git clone git://github.com/pwnieexpress/metasploit-framework.git .
 echo "[+] PX Slimline Metasploit fork downloaded to /opt/metasploit/msf3."
 
 echo "alias msfupdate='cd /opt/metasploit/msf3 && git pull origin master'" >> /root/.bashrc
