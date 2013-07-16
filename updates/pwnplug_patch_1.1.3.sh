@@ -12,11 +12,20 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
-# Verify patch 1.1.2 is not applied
+# Verify we (probably) have internet access
+wget -qO- --timeout=5 http://google.com > /dev/null
+if [[ $? -eq 0 ]]; then
+        echo "[+] Internet connection detected, continuing."
+else
+        echo "[-] Internet connection could not be established, exiting..."
+        # exit 2
+fi
+
+# Verify patch 1.1.3 is not applied
 if [ "`grep -o 1.1.3 /etc/motd.tail`" == "1.1.3" ] ; then 
         echo "[-] Patch 1.1.3 already applied. Aborting..."
         echo "[-] If you have questions, please email support@pwnieexpress.com."
-        exit 1
+        exit 3
 fi
 
 # Verify current Pwn Plug release is 1.1 or greater
@@ -27,7 +36,7 @@ else
     echo "[-] You can download the 1.1 upgrade at:                            "
     echo "[-] http://www.pwnieexpress.com/downloads.html                      "
     echo "[-] If you have questions, please email support@pwnieexpress.com.   "
-    exit 1
+    exit 4
 fi
 
 echo ""
@@ -64,17 +73,23 @@ if [ "`grep -o 1.1.1 /etc/motd.tail`" == "1.1.1" ] ; then
     # Clean up the 
 
 else
-    # Create mount point for SD card. Unfortunately we can't rely on the SD card being 
-    # available, so don't try to mount it. 
-    mkdir /storage
 
-    # Add a line to automount the sd card into /storage (see manual for how to format)
-    echo "/dev/mmcblk0p1 /storage ext2 rw 0 0" >> /etc/fstab
+    if [ "`grep -o mmcblk0p1 /etc/fstab`" == "mmcblk0p1" ] ; then 
+        echo "[+] Mount point for SD card already exists!"
+    else
+        echo "[+] Creating mount point for SD Card"
+        # Create mount point for SD card. Unfortunately we can't rely on the SD card being 
+        # available, so don't try to mount it. 
+        mkdir /storage
 
+        # Add a line to automount the sd card into /storage (see manual for how to format)
+        echo "/dev/mmcblk0p1 /storage ext2 rw 0 0" >> /etc/fstab
+    fi
+   
 fi
 
 ###
-### Attempt to move metasploit to Git. Note that this was done for the 1.1.2 patch
+### Attempt to move metasploit to git. Note that this was done for the 1.1.2 patch
 ### but if we don't exist for some reason, let's go ahead and re-create this.
 ###
 if [ -d /opt/metasploit/msf3/.git ]; then
@@ -99,40 +114,57 @@ if [ -d /opt/metasploit/msf3/.git ]; then
 fi
 
 ###
-### Clean up ruby version - This is specific to version 1.1.3
+### Implement updated Plug UI
+###
+
+# Kill the running plug ui
+killall -9 ruby
+
+# Remove Old code
+rm -rf /var/pwnplug/plugui/*
+
+# Extract & Place updated code 
+tar -zxf ./plugui.tar.gz
+mv plugui/* /var/pwnplug/plugui
+
+# Clean up
+rm -rf ./plugui
+rm ./plugui.tar.gz
+
+###
+### Update Ruby version
 ###
 
 # Remove old / outdated Ruby
 apt-get -y remove ruby rubygems ruby1.8 rubygems1.8
 
-# Download our Ruby packages
-wget http://pub.pwnieexpress.com/ruby_arm/libruby1.9.1_1.9.3.429pwnix0_armel.deb
-wget http://pub.pwnieexpress.com/ruby_arm/ruby1.9.1_1.9.3.429pwnix0_armel.deb
-wget http://pub.pwnieexpress.com/ruby_arm/ruby1.9.1-dev_1.9.3.429pwnix0_armel.deb
+# Install updated Ruby & Metasploit dependencies
+apt-get -y install libffi5 libyaml-0-2 libpq-dev libxslt1-dev libxml2-dev
 
-# Verify Sha1's as: 
-# 8e8277d063d0fb9fd3473a23fb76374e7b2bd917  libruby1.9.1_1.9.3.429pwnix0_armel.deb
-# 98d8a0579671aa65bb895fc6dc4060726d74a1a6  ruby1.9.1_1.9.3.429pwnix0_armel.deb
-# 4db691fcd5a8c0491feb37df1aba7221b2348536 ruby1.9.1-dev_1.9.3.429pwnix0_armel.deb
+# Install updated Ruby
+dpkg -i ./libruby1.9.1_1.9.3.429pwnix0_armel.deb
+dpkg -i ./ruby1.9.1_1.9.3.429pwnix0_armel.deb
+dpkg -i ./ruby1.9.1-dev_1.9.3.429pwnix0_armel.deb
 
-apt-get install libffi5 libyaml-0-2
-dpkg -i libruby1.9.1_1.9.3.429pwnix0_armel.deb
-dpkg -i ruby1.9.1_1.9.3.429pwnix0_armel.deb
-dpkg -i ruby1.9.1-dev_1.9.3.429pwnix0_armel.deb
+# Clean up
+rm ./libruby1.9.1_1.9.3.429pwnix0_armel.deb
+rm ./ruby1.9.1_1.9.3.429pwnix0_armel.deb
+rm ./ruby1.9.1-dev_1.9.3.429pwnix0_armel.deb
 
-# install postgres dev library for pg gem
-apt-get install libpq-dev
+# Install Plug UI Dependencies
+gem install sinatra --no-ri --no-rdoc
 
-# Install metasploit's bundle 
+# Restart Plug UI
+service plugui start
+
+# Install metasploit bundle now that we have an updated ruby installed 
 cd /opt/metasploit/msf3
 bundle install
 
-
 # Update release version for community or regular edition
-sed -i 's/Release 1.1[.?]*c.*$/Release 1.1.3c \[June 2013\]/g' /etc/motd.tail
-sed -i 's/Release 1.1[.?]* .*$/Release 1.1.3 \[June 2013\]/g' /etc/motd.tail
+sed -i 's/.*Release 1.1[.?]c.*$/ Pwn Plug Elite Release 1.1.3 \[June 2013\]/g' /etc/motd.tail
 
-echo "[+] Release version updated successfully."
+echo "[+] Release version updated to 1.1.3 successfully."
 
 # Done
 echo ""
