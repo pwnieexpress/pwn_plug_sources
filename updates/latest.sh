@@ -17,6 +17,6 @@ fi
 
 # Cleaning up... 
 echo "cleaning up..."
-rm temp_hash
+rm ./temp_hash
 
 echo "done"
