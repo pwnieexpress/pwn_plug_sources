@@ -2,7 +2,7 @@ echo "downloading latest..."
 wget http://pub.pwnieexpress.com/pwnplug_patch_1.1.3.tar.gz
 
 echo "checking patch hash..."
-hash=2b341317357f178e5b0335e6425de5b8762c8d23
+hash=40cde500c51793865956a60e390fee262e9e5705
 sha1sum pwnplug_patch_1.1.3.tar.gz > temp_hash
 if [ `grep -o ${hash} temp_hash` ]; then
     echo "extracting latest patch"
