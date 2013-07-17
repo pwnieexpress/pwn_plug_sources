@@ -18,6 +18,8 @@ fi
 
 # Cleaning up... 
 echo "[+] cleaning up..."
+rm -rf pwnplug_patch_1.1.3
+rm pwnplug_patch_1.1.3.tar.gz
 rm ./temp_hash
 
 echo "[+] done"
