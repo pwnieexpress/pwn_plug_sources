@@ -12,7 +12,7 @@ if [ `grep -o ${hash} temp_hash` ]; then
     chmod +x pwnplug_patch_1.1.3.sh
     ./pwnplug_patch_1.1.3.sh
 else
-  echo "false"
+  echo "unable to verify hash of latest patch"
 fi
 
 # Cleaning up... 
