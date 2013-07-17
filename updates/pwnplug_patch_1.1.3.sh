@@ -1,10 +1,13 @@
 #!/bin/bash
-# Pwn Plug Patch 1.1.2
+# Pwn Plug Patch 1.1.3
 # pwnieexpress.com
-# Revision 7.16.2012
+# Revision 07.16.2013
 
 plug_release=""`grep -o "Release 1.1" /etc/motd.tail`""
 echo ""
+
+# Set path so we can call local deps
+PATH=$PATH:.
 
 # Verify we are root
 if [[ $EUID -ne 0 ]]; then
@@ -69,11 +72,7 @@ if [ "`grep -o 1.1.1 /etc/motd.tail`" == "1.1.1" ] ; then
     else
         echo "[-] Warning: Unable to locate svn copy of metasploit."
     fi
-
-    # Clean up the 
-
 else
-
     if [ "`grep -o mmcblk0p1 /etc/fstab`" == "mmcblk0p1" ] ; then 
         echo "[+] Mount point for SD card already exists!"
     else
@@ -93,6 +92,8 @@ fi
 ### but if we don't exist for some reason, let's go ahead and re-create this.
 ###
 if [ -d /opt/metasploit/msf3/.git ]; then
+    echo "[+] Metasploit moved to git, skipping..."
+else
     echo "[+] Removing /opt/metasploit/msf3..."
     rm -rf /opt/metasploit/msf3
     echo "[+] /opt/metasploit/msf3 removed."
@@ -116,6 +117,7 @@ fi
 ###
 ### Implement updated Plug UI
 ###
+echo "Installing updated Plug UI..."
 
 # Kill the running plug ui
 killall -9 ruby
@@ -124,12 +126,12 @@ killall -9 ruby
 rm -rf /var/pwnplug/plugui/*
 
 # Extract & Place updated code 
-tar -zxf ./plugui.tar.gz
+tar -zxf plugui.tar.gz
 mv plugui/* /var/pwnplug/plugui
 
 # Clean up
-rm -rf ./plugui
-rm ./plugui.tar.gz
+#rm -rf plugui
+#rm plugui.tar.gz
 
 ###
 ### Update Ruby version
@@ -142,17 +144,18 @@ apt-get -y remove ruby rubygems ruby1.8 rubygems1.8
 apt-get -y install libffi5 libyaml-0-2 libpq-dev libxslt1-dev libxml2-dev
 
 # Install updated Ruby
-dpkg -i ./libruby1.9.1_1.9.3.429pwnix0_armel.deb
-dpkg -i ./ruby1.9.1_1.9.3.429pwnix0_armel.deb
-dpkg -i ./ruby1.9.1-dev_1.9.3.429pwnix0_armel.deb
+dpkg -i libruby1.9.1_1.9.3.429pwnix0_armel.deb
+dpkg -i ruby1.9.1_1.9.3.429pwnix0_armel.deb
+dpkg -i ruby1.9.1-dev_1.9.3.429pwnix0_armel.deb
 
 # Clean up
-rm ./libruby1.9.1_1.9.3.429pwnix0_armel.deb
-rm ./ruby1.9.1_1.9.3.429pwnix0_armel.deb
-rm ./ruby1.9.1-dev_1.9.3.429pwnix0_armel.deb
+#rm libruby1.9.1_1.9.3.429pwnix0_armel.deb
+#rm ruby1.9.1_1.9.3.429pwnix0_armel.deb
+#rm ruby1.9.1-dev_1.9.3.429pwnix0_armel.deb
 
 # Install Plug UI Dependencies
 gem install sinatra --no-ri --no-rdoc
+gem install bundler --no-ri --no-rdoc
 
 # Restart Plug UI
 service plugui start
@@ -162,15 +165,8 @@ cd /opt/metasploit/msf3
 bundle install
 
 # Update release version for community or regular edition
-sed -i 's/.*Release 1.1[.?]c.*$/ Pwn Plug Elite Release 1.1.3 \[June 2013\]/g' /etc/motd.tail
-
-echo "[+] Release version updated to 1.1.3 successfully."
-
-# Done
-echo ""
-echo "---------------------------------------------------------------"
-echo "Pwn Plug Patch 1.1.3 applied successfully! - Note that the SD  "
-echo " card is not required in this version. You may now use all     "
-echo " functionality of your Pwn Plug without the SD card.           "
-echo "---------------------------------------------------------------"
-echo ""
+sed -i 's/Release 1.1.[0-9]c.*$/Release 1.1.3c \[June 2013\]/g' /etc/motd.tail
+sed -i 's/Release 1.1.[0-9]\s.*$/Release 1.1.3 \[June 2013\]/g' /etc/motd.tail
+    
+echo "[+] Patch 1.1.3 applied."
+echo "[+] If you encountered any errors, please email support@pwnieexpress.com."
