@@ -1,25 +1,29 @@
-echo "[+] downloading latest..."
+echo "[+] Ensuring clean environment..."
+rm pwnplug_patch_1.1.3.tar.gz*
+rm -rf pwnplug_patch_1.1.3
+
+echo "[+] Downloading latest patch..."
 wget http://pub.pwnieexpress.com/pwnplug_patch_1.1.3.tar.gz
 
-echo "[+] checking patch hash..."
-hash=40cde500c51793865956a60e390fee262e9e5705
+echo "[+] Checking patch hash..."
+hash=41db0befec7777018a4be2803f681b194d967a65
 sha1sum pwnplug_patch_1.1.3.tar.gz > temp_hash
 if [ `grep -o ${hash} temp_hash` ]; then
-    echo "[+] extracting latest patch"
-    tar -zxvf pwnplug_patch_1.1.3.tar.gz
-    echo "[+] running latest patch"
+    echo "[+] Extracting latest patch"
+    tar -zxf pwnplug_patch_1.1.3.tar.gz
+    echo "[+] Running latest patch"
     cd pwnplug_patch_1.1.3
     chmod +x ./pwnplug_patch_1.1.3.sh
     ./pwnplug_patch_1.1.3.sh
     cd ..
 else
-  echo "[-] unable to verify hash of latest patch"
+  echo "[-] Unable to verify hash of latest patch"
 fi
 
 # Cleaning up... 
-echo "[+] cleaning up..."
+echo "[+] Cleaning up..."
 rm -rf pwnplug_patch_1.1.3
 rm pwnplug_patch_1.1.3.tar.gz
 rm ./temp_hash
 
-echo "[+] done"
+echo "[+] Done"
