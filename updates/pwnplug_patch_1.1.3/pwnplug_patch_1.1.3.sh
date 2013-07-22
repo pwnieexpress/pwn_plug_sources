@@ -203,10 +203,10 @@ bundle install
 
 # Update release version for community or regular edition
 echo "[+] Updating Version..."
-sed -i 's/Release 1.1\s.*$/Release 1.1.3 \[June 2013\]/g' /etc/motd.tail
-sed -i 's/Release 1.1c\s.*$/Release 1.1.3c \[June 2013\]/g' /etc/motd.tail
-sed -i 's/Release 1.1.[0-9]c.*$/Release 1.1.3c \[June 2013\]/g' /etc/motd.tail
-sed -i 's/Release 1.1.[0-9]\s.*$/Release 1.1.3 \[June 2013\]/g' /etc/motd.tail
+sed -i 's/Release 1.1\s.*$/Release 1.1.3 \[June 2013\]/g' /etc/motd*
+sed -i 's/Release 1.1c\s.*$/Release 1.1.3c \[June 2013\]/g' /etc/motd*
+sed -i 's/Release 1.1.[0-9]c.*$/Release 1.1.3c \[June 2013\]/g' /etc/motd*
+sed -i 's/Release 1.1.[0-9]\s.*$/Release 1.1.3 \[June 2013\]/g' /etc/motd*
 
 echo "[+] Patch 1.1.3 applied."
 echo "[+] If you encountered any errors, please email support@pwnieexpress.com."
