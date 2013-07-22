@@ -129,6 +129,11 @@ service tinyproxy stop
 update-rc.d -f tinyproxy remove
 
 ###
+### Disable DHCP Server on bootup
+###
+update-rc.d -f isc-dhcp-server remove
+
+###
 ### Implement updated Plug UI
 ###
 echo "Installing updated Plug UI..."
