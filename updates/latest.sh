@@ -3,10 +3,10 @@ rm pwnplug_patch_1.1.3.tar.gz*
 rm -rf pwnplug_patch_1.1.3
 
 echo "[+] Downloading latest patch..."
-wget http://pub.pwnieexpress.com/pwnplug_patch_1.1.3.tar.gz
+wget http://pub.pwnieexpress.com/updates/pwn_plug/pwnplug_patch_1.1.3.tar.gz
 
 echo "[+] Checking patch hash..."
-hash=f4c52c8242f7e24f2ede21da25e9050c13c5c0cd
+hash=385041d0356c517c0764c842cc73115d28beebc3
 sha1sum pwnplug_patch_1.1.3.tar.gz > temp_hash
 if [ `grep -o ${hash} temp_hash` ]; then
     echo "[+] Extracting latest patch"
