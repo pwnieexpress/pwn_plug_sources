@@ -101,6 +101,7 @@ fi
 ###
 apt-get -y update
 
+
 ###
 ### Install / Use NTP
 ###
@@ -194,12 +195,11 @@ else
     cd /opt/metasploit/msf3
     git clone git://github.com/pwnieexpress/metasploit-framework.git .
     echo "[+] PX Metasploit fork downloaded to /opt/metasploit/msf3."
-
-    echo "alias msfupdate='cd /opt/metasploit/msf3 && git pull origin master'" >> /root/.bashrc
-    source /root/.bashrc
-    echo "[+] Added msfupdate alias to root's bashrc."
 fi
 
+# Place new msfupdate script
+chmod +x msfupdate
+mv msfupdate /usr/local/bin/
 
 # Install metasploit bundle now that we have an updated ruby installed
 echo "[+] Installing Metasploit Bundle..."
@@ -212,6 +212,8 @@ sed -i 's/Release 1.1\s.*$/Release 1.1.3 \[June 2013\]/g' /etc/motd*
 sed -i 's/Release 1.1c\s.*$/Release 1.1.3c \[June 2013\]/g' /etc/motd*
 sed -i 's/Release 1.1.[0-9]c.*$/Release 1.1.3c \[June 2013\]/g' /etc/motd*
 sed -i 's/Release 1.1.[0-9]\s.*$/Release 1.1.3 \[June 2013\]/g' /etc/motd*
+
+
 
 echo "[+] Patch 1.1.3 applied."
 echo "[+] If you encountered any errors, please email support@pwnieexpress.com."
