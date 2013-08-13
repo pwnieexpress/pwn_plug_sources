@@ -171,6 +171,11 @@ gem install bundler --no-ri --no-rdoc
 # Restart Plug UI
 service plugui start
 
+# Place new msfupdate script
+rm /usr/local/bin/msfupdate
+chmod +x msfupdate
+mv msfupdate /usr/local/bin/
+
 ###
 ### Attempt to move metasploit to git. Note that this was done for the 1.1.2 patch
 ### but if we don't exist for some reason, let's go ahead and re-create this.
@@ -196,10 +201,6 @@ else
     git clone git://github.com/pwnieexpress/metasploit-framework.git .
     echo "[+] PX Metasploit fork downloaded to /opt/metasploit/msf3."
 fi
-
-# Place new msfupdate script
-chmod +x msfupdate
-mv msfupdate /usr/local/bin/
 
 # Install metasploit bundle now that we have an updated ruby installed
 echo "[+] Installing Metasploit Bundle..."
